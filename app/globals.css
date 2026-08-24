@@ -1,0 +1,404 @@
+@import 'tailwindcss';
+
+:root {
+  --paper: #fdfaf3;
+  --paper-edge: #f0e9d8;
+  --ink: #1f1b16;
+  --ink-soft: #6b6152;
+  --rule: #e3dac4;
+  --accent: #8a6d3b;
+  --accent-soft: #f3ead7;
+  --surface: #ffffff;
+  --surface-2: #f7f4ec;
+  --border: #e6dfd0;
+  --shadow: 0 1px 2px rgb(31 27 22 / 0.05), 0 8px 24px -12px rgb(31 27 22 / 0.18);
+}
+
+:root[data-theme='dark'] {
+  --paper: #16150f;
+  --paper-edge: #22201a;
+  --ink: #ece5d5;
+  --ink-soft: #9c9382;
+  --rule: #2f2c23;
+  --accent: #d9b978;
+  --accent-soft: #2a2418;
+  --surface: #1c1a15;
+  --surface-2: #23211a;
+  --border: #322e25;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.7);
+}
+
+:root[data-theme='sepia'] {
+  --paper: #f6ecd8;
+  --paper-edge: #ebdec3;
+  --ink: #3a2f1e;
+  --ink-soft: #7b6b4f;
+  --rule: #ddcfae;
+  --accent: #8a6d3b;
+  --accent-soft: #eee0c2;
+  --surface: #faf3e4;
+  --surface-2: #f2e8d2;
+  --border: #e0d2b4;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------- mushaf page */
+
+.mushaf-page {
+  container-type: inline-size;
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  padding: 3.5cqw 4.5cqw 2cqw;
+  display: flex;
+  flex-direction: column;
+  min-height: 40vh;
+}
+
+.mushaf-line {
+  display: flex;
+  /*
+   * `direction: rtl` already runs the main axis right-to-left, so the first word
+   * of the line lands at the right edge. `row-reverse` would flip it back to
+   * left-to-right and paint every line's words in reverse order — the two do not
+   * compose. Do not add it back.
+   */
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  direction: rtl;
+  line-height: 1.7;
+  /* Replaced at runtime by the measured fit size — this is only the pre-font
+     fallback, and the value the probe pass starts from. */
+  font-size: 5.4cqw;
+  padding-block: 0.18em;
+}
+
+/* A short line that closes a surah must not be stretched across the measure. */
+.mushaf-line[data-stretch='false'] {
+  justify-content: center;
+  gap: 0.28em;
+}
+
+.mushaf-word {
+  cursor: pointer;
+  padding-inline: 0.04em;
+  transition: text-decoration-color 120ms ease, background-color 120ms ease;
+  white-space: nowrap;
+  text-decoration-skip-ink: none;
+}
+
+/*
+ * A marked verse is underlined, not boxed.
+ *
+ * Two reasons. Words on a justified Mushaf line sit in variable-width gaps, so a
+ * background per word reads as a row of disconnected chips rather than one
+ * marked verse. And the word spans inherit the line's 1.7 line-height, so any
+ * box or inset shadow is far taller than the glyphs and floats away from them.
+ * `text-decoration` tracks the real text baseline, so it lands under the letters
+ * at any size and the eye joins it across the gaps into one continuous mark.
+ */
+.mushaf-word[data-marked='true'] {
+  text-decoration-line: underline;
+  text-decoration-color: var(--marker, var(--accent));
+  text-decoration-thickness: 0.07em;
+  text-underline-offset: 0.16em;
+}
+
+/*
+ * Selection is painted as bands BEHIND the words, not as a background on each
+ * one. A justified Mushaf line is a `space-between` flex row, so the gaps
+ * between words belong to the line and no word's background can cover them —
+ * per-word highlighting reads as a row of chips, and the eye has to assemble
+ * the verse from them. One band per (verse × line), measured in JS from the
+ * word rects, gives a single continuous mark: the verse looks like one selected
+ * unit, which is what it is. See MushafPage's `bandsFor`.
+ */
+.verse-bands {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.verse-band {
+  position: absolute;
+  border-radius: 0.18em;
+  transition: opacity 120ms ease;
+}
+
+.verse-band[data-kind='selected'] {
+  background-color: color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow: inset 0 -0.09em 0 color-mix(in srgb, var(--accent) 65%, transparent);
+}
+
+.verse-band[data-kind='hover'] {
+  background-color: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+/* Positioned children paint above static siblings, so the band layer would cover
+   the text unless the text is lifted out of that comparison explicitly. */
+.mushaf-body {
+  position: relative;
+  z-index: 1;
+}
+
+/* Before this page's font arrives, show real Uthmani unicode in the same boxes. */
+.mushaf-line[data-fallback='true'] {
+  font-family: 'Scheherazade New', 'Amiri Quran', 'Traditional Arabic', serif;
+  font-size: 4.2cqw;
+  justify-content: center;
+  gap: 0.3em;
+  opacity: 0.45;
+}
+
+.surah-band {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent);
+  padding: 0.8cqw 2cqw;
+  margin-block: 0.8cqw;
+  font-size: 3.2cqw;
+  color: var(--accent);
+  font-weight: 600;
+  font-family: 'Scheherazade New', serif;
+}
+
+.surah-band-en {
+  font-size: 0.6em;
+  color: var(--ink-soft);
+  font-weight: 500;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.basmala-line {
+  display: flex;
+  justify-content: center;
+  font-family: 'Scheherazade New', serif;
+  font-size: 4.4cqw;
+  line-height: 2;
+  color: var(--ink);
+  direction: rtl;
+  padding-block: 0.4cqw;
+}
+
+.page-number {
+  text-align: center;
+  font-size: 2.4cqw;
+  color: var(--ink-soft);
+  padding-top: 1.6cqw;
+  border-top: 1px solid var(--rule);
+  margin-top: 2cqw;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------- chrome */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  min-height: 40px;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.btn:hover {
+  background: var(--surface-2);
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.06);
+  background: var(--accent);
+}
+
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn-ghost:hover {
+  background: var(--surface-2);
+}
+
+.field {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.9rem;
+  min-height: 40px;
+}
+
+.field:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: -1px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.scroll-y {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll-y::-webkit-scrollbar {
+  width: 10px;
+}
+.scroll-y::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* ---------------------------------------------------------------- rich text */
+
+.tiptap {
+  outline: none;
+  min-height: 8rem;
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+.tiptap p {
+  margin: 0 0 0.6em;
+}
+.tiptap p:last-child {
+  margin-bottom: 0;
+}
+.tiptap h2 {
+  font-size: 1.1rem;
+  font-weight: 650;
+  margin: 0.8em 0 0.4em;
+}
+.tiptap h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.7em 0 0.3em;
+}
+.tiptap ul,
+.tiptap ol {
+  padding-inline-start: 1.4em;
+  margin: 0 0 0.6em;
+}
+.tiptap ul {
+  list-style: disc;
+}
+.tiptap ol {
+  list-style: decimal;
+}
+.tiptap blockquote {
+  border-inline-start: 3px solid var(--border);
+  padding-inline-start: 0.8em;
+  color: var(--ink-soft);
+  margin: 0 0 0.6em;
+}
+.tiptap a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tiptap code {
+  background: var(--surface-2);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.tiptap div[data-youtube-video] {
+  margin: 0.6em 0;
+}
+.tiptap div[data-youtube-video] iframe {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--ink-soft);
+  float: inline-start;
+  pointer-events: none;
+  height: 0;
+}
+
+.note-preview :where(p, ul, ol, h2, h3) {
+  margin: 0 0 0.4em;
+}
+.note-preview a {
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ dnd bits */
+
+.drop-active {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--accent-soft);
+}
+
+.dragging {
+  opacity: 0.4;
+}
+
+.drag-overlay {
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  box-shadow: var(--shadow);
+  font-size: 0.85rem;
+  max-width: 320px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
