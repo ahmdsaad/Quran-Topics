@@ -1,5 +1,6 @@
 import type { Category, Meta, Verse } from '@/lib/types';
 import { getNote, getVersesByKeys, orderedVersesInCategory } from '@/lib/db/repo';
+import { categoryTitles } from '@/lib/categories/titles';
 
 interface Row {
   depth: number;
@@ -15,14 +16,15 @@ interface Row {
   note: string;
 }
 
-/** Walks a category and its descendants, resolving verses and notes in order. */
-async function collect(root: Category, all: Category[], meta: Meta) {
+/** Walks category roots and their descendants, resolving verses and notes in order. */
+async function collectRoots(roots: Category[], all: Category[], meta: Meta) {
   const rows: Row[] = [];
   const sections: { cat: Category; depth: number; path: string; rows: Row[] }[] = [];
   const surahByNumber = new Map(meta.surahs.map((s) => [s.number, s]));
 
   const walk = async (cat: Category, depth: number, parentPath: string) => {
-    const path = parentPath ? `${parentPath} › ${cat.name}` : cat.name;
+    const title = categoryTitles(cat).combined;
+    const path = parentPath ? `${parentPath} › ${title}` : title;
     const links = await orderedVersesInCategory(cat);
     const verses = await getVersesByKeys(links.map((l) => l.verseKey));
     const byKey = new Map(verses.map((v: Verse) => [v.key, v]));
@@ -35,7 +37,7 @@ async function collect(root: Category, all: Category[], meta: Meta) {
       const row: Row = {
         depth,
         categoryPath: path,
-        categoryName: cat.name,
+        categoryName: title,
         verseKey: v.key,
         surahName: surahByNumber.get(v.surah)?.nameSimple ?? String(v.surah),
         surahNumber: v.surah,
@@ -55,9 +57,12 @@ async function collect(root: Category, all: Category[], meta: Meta) {
     }
   };
 
-  await walk(root, 0, '');
+  for (const root of roots) await walk(root, 0, '');
   return { rows, sections };
 }
+
+const collect = (root: Category, all: Category[], meta: Meta) =>
+  collectRoots([root], all, meta);
 
 const download = (blob: Blob, filename: string) => {
   const url = URL.createObjectURL(blob);
@@ -71,7 +76,7 @@ const download = (blob: Blob, filename: string) => {
 };
 
 const safeName = (s: string) =>
-  s.replace(/[^\p{L}\p{N} _-]/gu, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'category';
+  s.replace(/[^\p{L}\p{N} _-]/gu, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'topic';
 
 // ---------------------------------------------------------------------- Word
 
@@ -81,10 +86,12 @@ export async function exportCategoryDocx(root: Category, all: Category[], meta: 
 
   const children: InstanceType<typeof Paragraph>[] = [
     new Paragraph({
-      text: root.name,
+      text: categoryTitles(root).combined,
       heading: HeadingLevel.TITLE,
+      alignment: AlignmentType.RIGHT,
     }),
     new Paragraph({
+      alignment: AlignmentType.RIGHT,
       children: [
         new TextRun({
           text: `Exported ${new Date().toLocaleDateString()} · Quran Classification`,
@@ -99,7 +106,7 @@ export async function exportCategoryDocx(root: Category, all: Category[], meta: 
     if (section.depth > 0 || sections.length > 1) {
       children.push(
         new Paragraph({
-          text: section.cat.name,
+          text: categoryTitles(section.cat).combined,
           heading:
             section.depth === 0
               ? HeadingLevel.HEADING_1
@@ -107,6 +114,7 @@ export async function exportCategoryDocx(root: Category, all: Category[], meta: 
                 ? HeadingLevel.HEADING_2
                 : HeadingLevel.HEADING_3,
           spacing: { before: 300, after: 120 },
+          alignment: AlignmentType.RIGHT,
         })
       );
     }
@@ -114,6 +122,7 @@ export async function exportCategoryDocx(root: Category, all: Category[], meta: 
     if (!section.rows.length) {
       children.push(
         new Paragraph({
+          alignment: AlignmentType.RIGHT,
           children: [new TextRun({ text: 'No verses.', italics: true, size: 20, color: '999999' })],
         })
       );
@@ -133,6 +142,7 @@ export async function exportCategoryDocx(root: Category, all: Category[], meta: 
       );
       children.push(
         new Paragraph({
+          alignment: AlignmentType.RIGHT,
           children: [
             new TextRun({
               text: `${r.surahName} ${r.surahNumber}:${r.ayah} · Juz ${r.juz} · Page ${r.page}`,
@@ -145,8 +155,9 @@ export async function exportCategoryDocx(root: Category, all: Category[], meta: 
       if (r.note) {
         children.push(
           new Paragraph({
+            alignment: AlignmentType.RIGHT,
             spacing: { before: 60, after: 60 },
-            indent: { left: 360 },
+            indent: { right: 360 },
             children: [new TextRun({ text: r.note, size: 20, italics: true })],
           })
         );
@@ -156,7 +167,93 @@ export async function exportCategoryDocx(root: Category, all: Category[], meta: 
 
   const doc = new Document({ sections: [{ properties: {}, children }] });
   const blob = await Packer.toBlob(doc);
-  download(blob, `${safeName(root.name)}.docx`);
+  download(blob, `${safeName(categoryTitles(root).combined)}.docx`);
+}
+
+export async function exportAllCategoriesDocx(all: Category[], meta: Meta) {
+  const { Document, Packer, Paragraph, HeadingLevel, TextRun, AlignmentType } = await import('docx');
+  const roots = all.filter((category) => category.parentId === null);
+  const { sections } = await collectRoots(roots, all, meta);
+  const children: InstanceType<typeof Paragraph>[] = [
+    new Paragraph({
+      text: 'Quran Topics',
+      heading: HeadingLevel.TITLE,
+      alignment: AlignmentType.RIGHT,
+    }),
+    new Paragraph({
+      alignment: AlignmentType.RIGHT,
+      children: [
+        new TextRun({
+          text: `All topics · Exported ${new Date().toLocaleDateString()}`,
+          size: 18,
+          color: '888888',
+        }),
+      ],
+    }),
+  ];
+
+  if (!sections.length) {
+    children.push(new Paragraph({ text: 'No topics.', alignment: AlignmentType.RIGHT }));
+  }
+  for (const section of sections) {
+    children.push(
+      new Paragraph({
+        text: section.path,
+        heading:
+          section.depth === 0
+            ? HeadingLevel.HEADING_1
+            : section.depth === 1
+              ? HeadingLevel.HEADING_2
+              : HeadingLevel.HEADING_3,
+        spacing: { before: 300, after: 120 },
+        alignment: AlignmentType.RIGHT,
+      })
+    );
+    if (!section.rows.length) {
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.RIGHT,
+          children: [new TextRun({ text: 'No verses.', italics: true, size: 20, color: '999999' })],
+        })
+      );
+      continue;
+    }
+    for (const row of section.rows) {
+      children.push(
+        new Paragraph({
+          bidirectional: true,
+          alignment: AlignmentType.RIGHT,
+          spacing: { before: 160, after: 40, line: 400 },
+          children: [
+            new TextRun({ text: row.arabic, rightToLeft: true, size: 30, font: 'Traditional Arabic' }),
+          ],
+        }),
+        new Paragraph({
+          alignment: AlignmentType.RIGHT,
+          children: [
+            new TextRun({
+              text: `${row.surahName} ${row.surahNumber}:${row.ayah} · Juz ${row.juz} · Page ${row.page}`,
+              size: 18,
+              color: '8a6d3b',
+            }),
+          ],
+        })
+      );
+      if (row.note) {
+        children.push(
+          new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            spacing: { before: 60, after: 60 },
+            indent: { right: 360 },
+            children: [new TextRun({ text: row.note, size: 20, italics: true })],
+          })
+        );
+      }
+    }
+  }
+
+  const doc = new Document({ sections: [{ properties: {}, children }] });
+  download(await Packer.toBlob(doc), 'Quran-Topics.docx');
 }
 
 // --------------------------------------------------------------------- Excel
@@ -164,7 +261,7 @@ export async function exportCategoryDocx(root: Category, all: Category[], meta: 
 export async function exportCategoryXlsx(root: Category, all: Category[], meta: Meta) {
   const writeXlsxFile = (await import('write-excel-file/browser')).default;
   const { rows } = await collect(root, all, meta);
-  const data = rows.length ? rows : [emptyRow(root.name)];
+  const data = rows.length ? rows : [emptyRow(categoryTitles(root).combined)];
 
   // write-excel-file v4 replaced `schema` with `columns` and, instead of varying
   // its return type by option, always returns { toBlob, toFile }. The previous
@@ -176,7 +273,7 @@ export async function exportCategoryXlsx(root: Category, all: Category[], meta: 
   const text = (value: string, wrap = false) => ({ value, type: String, wrap });
 
   const columns = [
-    { header: { value: 'Category', ...header }, width: 30, cell: (r: Row) => text(r.categoryPath) },
+    { header: { value: 'Topic', ...header }, width: 30, cell: (r: Row) => text(r.categoryPath) },
     { header: { value: 'Surah', ...header }, width: 18, cell: (r: Row) => text(r.surahName) },
     { header: { value: 'Verse', ...header }, width: 10, cell: (r: Row) => text(r.verseKey) },
     { header: { value: 'Ayah', ...header }, width: 8, cell: (r: Row) => ({ value: r.ayah, type: Number }) },
@@ -187,7 +284,28 @@ export async function exportCategoryXlsx(root: Category, all: Category[], meta: 
   ];
 
   const blob = await writeXlsxFile(data, { columns, sheet: 'Verses' }).toBlob();
-  download(blob, `${safeName(root.name)}.xlsx`);
+  download(blob, `${safeName(categoryTitles(root).combined)}.xlsx`);
+}
+
+export async function exportAllCategoriesXlsx(all: Category[], meta: Meta) {
+  const writeXlsxFile = (await import('write-excel-file/browser')).default;
+  const roots = all.filter((category) => category.parentId === null);
+  const { rows } = await collectRoots(roots, all, meta);
+  const data = rows.length ? rows : [emptyRow('No topics')];
+  const header = { fontWeight: 'bold', backgroundColor: '#F3EAD7' } as const;
+  const text = (value: string, wrap = false) => ({ value, type: String, wrap });
+  const columns = [
+    { header: { value: 'Topic', ...header }, width: 35, cell: (row: Row) => text(row.categoryPath) },
+    { header: { value: 'Surah', ...header }, width: 18, cell: (row: Row) => text(row.surahName) },
+    { header: { value: 'Verse', ...header }, width: 10, cell: (row: Row) => text(row.verseKey) },
+    { header: { value: 'Ayah', ...header }, width: 8, cell: (row: Row) => ({ value: row.ayah, type: Number }) },
+    { header: { value: 'Juz', ...header }, width: 6, cell: (row: Row) => ({ value: row.juz, type: Number }) },
+    { header: { value: 'Page', ...header }, width: 7, cell: (row: Row) => ({ value: row.page, type: Number }) },
+    { header: { value: 'Arabic', ...header }, width: 60, cell: (row: Row) => ({ ...text(row.arabic, true), align: 'right' as const }) },
+    { header: { value: 'Note', ...header }, width: 50, cell: (row: Row) => text(row.note, true) },
+  ];
+  const blob = await writeXlsxFile(data, { columns, sheet: 'All Topics' }).toBlob();
+  download(blob, 'Quran-Topics.xlsx');
 }
 
 const emptyRow = (name: string): Row => ({

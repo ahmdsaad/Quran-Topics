@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'Quran Classification',
     short_name: 'Quran',
     description:
-      'Read the Quran in a page-perfect Mushaf layout, annotate verses, and organise them into categories.',
+      'Read the Quran in a page-perfect Mushaf layout, annotate verses, and organise them into topics.',
     start_url: '/',
     display: 'standalone',
     orientation: 'any',

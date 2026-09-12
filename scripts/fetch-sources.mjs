@@ -20,6 +20,13 @@ const CACHE = path.join(ROOT, '.cache');
 // Pinned refs. Bump deliberately — build-corpus.mjs validates against them.
 const LAYOUT = 'https://cdn.jsdelivr.net/gh/zonetecde/mushaf-layout@main/mushaf';
 const FONTS_V1 = 'https://cdn.jsdelivr.net/gh/nuqayah/qpc-fonts@master/mushaf-woff2';
+const TRANSLATIONS = [
+  ['en', 'en.sahih', 'English'],
+  ['ru', 'ru.kuliev', 'Russian'],
+  ['it', 'it.piccardo', 'Italian'],
+  ['fr', 'fr.hamidullah', 'French'],
+  ['es', 'es.cortes', 'Spanish'],
+];
 
 const PAGES = 604;
 
@@ -109,6 +116,15 @@ const mb = (dir) =>
 
 await fetchAll('mushaf layout', (n) => `${LAYOUT}/page-${pad(n)}.json`, layoutPath);
 await fetchAll('QPC v1 fonts ', (n) => `${FONTS_V1}/QCF_P${pad(n)}.woff2`, fontPath);
+
+for (const [language, edition, label] of TRANSLATIONS) {
+  const translationPath = path.join(CACHE, `translation-${language}.json`);
+  if (!present(translationPath)) {
+    process.stdout.write(`  ${label} translation: fetching`);
+    await fetchTo(`https://api.alquran.cloud/v1/quran/${edition}`, translationPath);
+    process.stdout.write(' ✓\n');
+  }
+}
 
 console.log(
   `  cached: ${mb(path.join(CACHE, 'mushaf'))} MB layout, ` +

@@ -4,10 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import MiniSearch from 'minisearch';
 import type { Meta, Verse } from '@/lib/types';
 import { db } from '@/lib/db/schema';
-import { listCategories, listNotes } from '@/lib/db/repo';
 import { normalizeArabic } from '@/lib/search/normalize';
 import { useUI } from '@/lib/store';
-import { PanelHeader } from '@/components/SettingsPanel';
 
 type Hit =
   | { kind: 'verse'; verse: Verse; score: number }
@@ -16,6 +14,8 @@ type Hit =
 
 let quranIndex: MiniSearch<{ id: number; key: string; simple: string }> | null = null;
 let indexBuilding: Promise<void> | null = null;
+const SEARCH_HISTORY_KEY = 'quran-search-history';
+const SEARCH_HISTORY_LIMIT = 12;
 
 /**
  * Builds the Quran index once per session.
@@ -40,19 +40,58 @@ async function ensureIndex(onProgress?: (s: string) => void) {
   return indexBuilding;
 }
 
-export default function SearchPanel({ meta, onClose }: { meta: Meta; onClose: () => void }) {
+export default function SearchPanel({
+  meta,
+  onVerseResult,
+  selectedVerseKey,
+  recentSearchFontSize,
+}: {
+  meta: Meta;
+  onVerseResult: (verse: Verse) => void;
+  selectedVerseKey?: string | null;
+  recentSearchFontSize: number;
+}) {
   const { jumpTo, setMobilePane, openNote, setOpenCategory } = useUI();
   const [q, setQ] = useState('');
-  const [scope, setScope] = useState<'all' | 'quran' | 'mine'>('all');
   const [hits, setHits] = useState<Hit[]>([]);
   const [status, setStatus] = useState('');
+  const [history, setHistory] = useState<string[]>([]);
+  const [editingHistory, setEditingHistory] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
 
   useEffect(() => {
     inputRef.current?.focus();
+    try {
+      const saved = JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) ?? '[]');
+      if (Array.isArray(saved)) {
+        setHistory(saved.filter((item): item is string => typeof item === 'string').slice(0, SEARCH_HISTORY_LIMIT));
+      }
+    } catch {
+      localStorage.removeItem(SEARCH_HISTORY_KEY);
+    }
     void ensureIndex(setStatus).then(() => setStatus(''));
   }, []);
+
+  const rememberSearch = (value = q) => {
+    const keyword = value.trim();
+    if (keyword.length < 2) return;
+    setHistory((current) => {
+      const next = [keyword, ...current.filter((item) => item.toLocaleLowerCase() !== keyword.toLocaleLowerCase())]
+        .slice(0, SEARCH_HISTORY_LIMIT);
+      localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const removeSearch = (keyword: string) => {
+    setHistory((current) => {
+      const next = current.filter((item) => item !== keyword);
+      localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next));
+      if (!next.length) setEditingHistory(false);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const term = q.trim();
@@ -68,7 +107,7 @@ export default function SearchPanel({ meta, onClose }: { meta: Meta; onClose: ()
 
       const out: Hit[] = [];
 
-      if (scope !== 'mine' && quranIndex) {
+      if (quranIndex) {
         // Normalize the query with exactly the function the corpus was built
         // with. If these ever diverge, search silently returns nothing.
         const needle = normalizeArabic(term);
@@ -84,23 +123,10 @@ export default function SearchPanel({ meta, onClose }: { meta: Meta; onClose: ()
         }
       }
 
-      if (scope !== 'quran') {
-        const lower = term.toLowerCase();
-        const [notes, cats] = await Promise.all([listNotes(), listCategories()]);
-        notes
-          .filter((n) => n.contentText.toLowerCase().includes(lower))
-          .slice(0, 40)
-          .forEach((n) => out.push({ kind: 'note', verseKey: n.verseKey, text: n.contentText, score: 5 }));
-        cats
-          .filter((c) => c.name.toLowerCase().includes(lower))
-          .slice(0, 20)
-          .forEach((c) => out.push({ kind: 'category', id: c.id, name: c.name, score: 4 }));
-      }
-
       if (seq.current === mine) setHits(out);
     }, 220);
     return () => window.clearTimeout(t);
-  }, [q, scope]);
+  }, [q]);
 
   const grouped = useMemo(() => {
     return {
@@ -112,34 +138,73 @@ export default function SearchPanel({ meta, onClose }: { meta: Meta; onClose: ()
 
   return (
     <div className="flex h-full flex-col">
-      <PanelHeader title="Search" onClose={onClose} />
+      <header className="flex shrink-0 items-center justify-between border-b px-4 py-3"
+        style={{ borderColor: 'var(--border)' }}>
+        <h2 className="text-sm font-semibold">Search</h2>
+        {history.length ? (
+          <button className="btn btn-ghost px-2 py-1 text-xs"
+            style={editingHistory ? { background: 'var(--accent-soft)', color: 'var(--accent)' } : undefined}
+            onClick={() => setEditingHistory((editing) => !editing)}>
+            {editingHistory ? 'Done' : 'Edit'}
+          </button>
+        ) : null}
+      </header>
 
       <div className="shrink-0 space-y-2 border-b p-3" style={{ borderColor: 'var(--border)' }}>
         <input
           ref={inputRef}
           className="field"
-          placeholder="Search the Quran, your notes and categories…"
+          placeholder="Search the whole Quran…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') rememberSearch();
+          }}
         />
-        <div className="flex gap-1">
-          {(
-            [
-              ['all', 'Everything'],
-              ['quran', 'Quran'],
-              ['mine', 'My notes'],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              className="btn btn-ghost flex-1 px-2 py-1 text-[11px]"
-              style={scope === id ? { background: 'var(--accent-soft)', color: 'var(--accent)' } : undefined}
-              onClick={() => setScope(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {history.length ? (
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-soft)' }}>
+                Recent searches
+              </span>
+              <button
+                className="text-[10px]"
+                style={{ color: 'var(--ink-soft)' }}
+                onClick={() => {
+                  setHistory([]);
+                  localStorage.removeItem(SEARCH_HISTORY_KEY);
+                }}
+              >
+                Clear
+              </button>
+            </div>
+            <div className="flex gap-1 overflow-x-auto pb-1">
+              {history.map((keyword) => (
+                <div key={keyword} className="flex shrink-0 overflow-hidden rounded-full border"
+                  style={{ borderColor: editingHistory ? '#b4483f' : 'var(--border)', background: 'var(--surface)' }}>
+                  <button className="px-2 py-1" style={{ fontSize: recentSearchFontSize }}
+                    onClick={() => {
+                      if (editingHistory) removeSearch(keyword);
+                      else {
+                        setQ(keyword);
+                        rememberSearch(keyword);
+                      }
+                    }}>
+                    {keyword}
+                  </button>
+                  {editingHistory ? (
+                    <button className="flex min-h-8 min-w-8 items-center justify-center border-s text-base"
+                      style={{ borderColor: '#e1b4af', color: '#b4483f' }}
+                      aria-label={`Remove recent search ${keyword}`}
+                      onClick={() => removeSearch(keyword)}>
+                      ×
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <p className="text-[11px]" style={{ color: 'var(--ink-soft)' }}>
           {status ||
             (q.trim().length >= 2
@@ -150,13 +215,14 @@ export default function SearchPanel({ meta, onClose }: { meta: Meta; onClose: ()
 
       <div className="scroll-y flex-1">
         {grouped.categories.length ? (
-          <Group title="Categories">
+          <Group title="Topics">
             {grouped.categories.map((h) => (
               <button
                 key={h.id}
                 className="flex w-full items-center gap-2 border-b px-4 py-2.5 text-left"
                 style={{ borderColor: 'var(--border)' }}
                 onClick={() => {
+                  rememberSearch();
                   setOpenCategory(h.id);
                   setMobilePane('categories');
                 }}
@@ -175,7 +241,10 @@ export default function SearchPanel({ meta, onClose }: { meta: Meta; onClose: ()
                 key={h.verseKey}
                 className="block w-full border-b px-4 py-2.5 text-left"
                 style={{ borderColor: 'var(--border)' }}
-                onClick={() => openNote(h.verseKey)}
+                onClick={() => {
+                  rememberSearch();
+                  openNote(h.verseKey);
+                }}
               >
                 <span className="text-[11px] font-semibold" style={{ color: 'var(--accent)' }}>
                   {h.verseKey}
@@ -196,10 +265,17 @@ export default function SearchPanel({ meta, onClose }: { meta: Meta; onClose: ()
                 <button
                   key={h.verse.key}
                   className="block w-full border-b px-4 py-2.5 text-left"
-                  style={{ borderColor: 'var(--border)' }}
+                  style={h.verse.key === selectedVerseKey
+                    ? {
+                        borderColor: 'var(--border)',
+                        background: 'var(--accent-soft)',
+                        boxShadow: 'inset 3px 0 0 var(--accent)',
+                      }
+                    : { borderColor: 'var(--border)' }}
+                  aria-current={h.verse.key === selectedVerseKey ? 'true' : undefined}
                   onClick={() => {
-                    jumpTo(h.verse.page);
-                    setMobilePane('reader');
+                    rememberSearch();
+                    onVerseResult(h.verse);
                   }}
                 >
                   <span className="flex items-baseline gap-2">

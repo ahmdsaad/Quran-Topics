@@ -50,6 +50,24 @@ const fail = (msg) => {
   process.exit(1);
 };
 
+const TRANSLATION_LANGUAGES = ['en', 'ru', 'it', 'fr', 'es'];
+const translationMaps = new Map();
+for (const language of TRANSLATION_LANGUAGES) {
+  const translationFile = path.join(__dirname, '..', '.cache', `translation-${language}.json`);
+  if (!fs.existsSync(translationFile)) fail(`missing ${language} translation\n  Run: npm run fetch`);
+  const translationPayload = JSON.parse(fs.readFileSync(translationFile, 'utf8'));
+  const translations = new Map();
+  for (const surah of translationPayload.data?.surahs ?? []) {
+    for (const ayah of surah.ayahs ?? []) {
+      translations.set(`${surah.number}:${ayah.numberInSurah}`, ayah.text);
+    }
+  }
+  if (translations.size !== TOTAL_VERSES) {
+    fail(`expected ${TOTAL_VERSES} ${language} translations, got ${translations.size}`);
+  }
+  translationMaps.set(language, translations);
+}
+
 // ---------------------------------------------------------------- read source
 const raw = [];
 for (let p = 1; p <= PAGES; p++) {
@@ -121,6 +139,9 @@ const verses = orderedKeys.map((key, i) => {
     juz: juzOfIndex(i),
     text: textUthmani,
     simple: normalizeArabic(textUthmani),
+    translations: Object.fromEntries(
+      TRANSLATION_LANGUAGES.map((language) => [language, translationMaps.get(language).get(key)])
+    ),
   };
 });
 
@@ -293,8 +314,15 @@ for (const doc of pageDocs) lineHist[doc.lines.length] = (lineHist[doc.lines.len
 // ---------------------------------------------------------------------- write
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(path.join(OUT, 'pages'), { recursive: true });
+fs.mkdirSync(path.join(OUT, 'translations'), { recursive: true });
 for (const doc of pageDocs) {
   fs.writeFileSync(path.join(OUT, 'pages', `${doc.page}.json`), JSON.stringify(doc));
+}
+for (const language of TRANSLATION_LANGUAGES) {
+  fs.writeFileSync(
+    path.join(OUT, 'translations', `${language}.json`),
+    JSON.stringify(verses.map((verse) => [verse.key, verse.translations[language]]))
+  );
 }
 
 const pageIndex = {};
@@ -306,7 +334,7 @@ for (const v of verses) {
 fs.writeFileSync(
   path.join(OUT, 'meta.json'),
   JSON.stringify({
-    version: 1,
+    version: 4,
     pages: PAGES,
     totalVerses: verses.length,
     surahs,
@@ -319,7 +347,17 @@ fs.writeFileSync(
 fs.writeFileSync(
   path.join(OUT, 'verses.json'),
   JSON.stringify(
-    verses.map((v) => [v.id, v.key, v.surah, v.ayah, v.page, v.juz, v.text, v.simple])
+    verses.map((v) => [
+      v.id,
+      v.key,
+      v.surah,
+      v.ayah,
+      v.page,
+      v.juz,
+      v.text,
+      v.simple,
+      v.translations,
+    ])
   )
 );
 
@@ -337,4 +375,3 @@ console.log(`  basmala lines     ${basmalaEmitted}`);
 console.log(`  lines per page    ${JSON.stringify(lineHist)}`);
 console.log(`  meta.json         ${mb(path.join(OUT, 'meta.json'))} MB`);
 console.log(`  verses.json       ${mb(path.join(OUT, 'verses.json'))} MB`);
-

@@ -9,7 +9,7 @@ import type {
   SyncEnvelope,
   VerseMarker,
 } from '@/lib/types';
-import { bySortKey, keyAtEnd, keyBetween } from '@/lib/ordering';
+import { bySortKey, keyAtEnd, keyBetween, keysBetween } from '@/lib/ordering';
 
 /**
  * THE ONE RULE: no component touches Dexie directly.
@@ -66,17 +66,29 @@ async function refreshMarker(verseKey: string) {
   ]);
   const liveBookmarks = alive(bookmarks);
   const liveAssignments = alive(assignments);
+  const assignedCategories = await d.categories.bulkGet(liveAssignments.map((assignment) => assignment.categoryId));
+  const qaCategoryIds = new Set(
+    assignedCategories
+      .filter((category) => category?.deletedAt === null && category.description === QA_CATEGORY_MARKER)
+      .map((category) => category!.id)
+  );
+  const qaCount = liveAssignments.filter((assignment) => qaCategoryIds.has(assignment.categoryId)).length;
+  const topicAssignments = liveAssignments.filter((assignment) => !qaCategoryIds.has(assignment.categoryId));
   const hasNote = !!note && note.deletedAt === null && note.contentText.trim().length > 0;
 
   const marker: VerseMarker = {
     verseKey,
     hasNote,
     hasBookmark: liveBookmarks.length > 0,
-    categoryCount: liveAssignments.length,
+    categoryCount: liveAssignments.length - qaCount,
+    categoryGroupKeys: topicAssignments
+      .map((assignment) => `${assignment.categoryId}:${assignment.groupId ?? assignment.id}`)
+      .sort(),
+    qaCount,
     bookmarkColor: liveBookmarks[0]?.color ?? null,
   };
 
-  if (!marker.hasNote && !marker.hasBookmark && marker.categoryCount === 0) {
+  if (!marker.hasNote && !marker.hasBookmark && marker.categoryCount === 0 && marker.qaCount === 0) {
     await d.verseMarkers.delete(verseKey);
   } else {
     await d.verseMarkers.put(marker);
@@ -107,9 +119,16 @@ export const getSurah = (n: number) => db().surahs.get(n);
 
 // -------------------------------------------------------------- categories
 
-export async function listCategories(): Promise<Category[]> {
+export type CategorySpaceFilter = 'topics' | 'qa' | 'all';
+export const QA_CATEGORY_MARKER = '__quran_categories_qa__';
+
+export async function listCategories(space: CategorySpaceFilter = 'topics'): Promise<Category[]> {
   const rows = await db().categories.toArray();
-  return alive(rows).sort(bySortKey);
+  return alive(rows)
+    .filter((category) => space === 'all' || (space === 'qa'
+      ? category.description === QA_CATEGORY_MARKER
+      : category.description !== QA_CATEGORY_MARKER))
+    .sort(bySortKey);
 }
 
 export async function childrenOf(parentId: string | null, all?: Category[]): Promise<Category[]> {
@@ -118,16 +137,20 @@ export async function childrenOf(parentId: string | null, all?: Category[]): Pro
 }
 
 export async function createCategory(
-  name: string,
+  nameArabic: string,
   parentId: string | null = null,
-  color: string | null = null
+  color: string | null = null,
+  nameEnglish: string = '',
+  space: 'topics' | 'qa' = 'topics'
 ): Promise<Category> {
-  const siblings = await childrenOf(parentId);
+  const siblings = (await listCategories(space)).filter((category) => category.parentId === parentId);
   const cat: Category = {
     id: newId(),
     parentId,
-    name: name.trim() || 'Untitled',
-    description: null,
+    name: nameArabic.trim() || nameEnglish.trim() || 'Untitled',
+    nameArabic: nameArabic.trim(),
+    nameEnglish: nameEnglish.trim(),
+    description: space === 'qa' ? QA_CATEGORY_MARKER : null,
     color,
     sortKey: keyAtEnd(siblings.at(-1)?.sortKey ?? null),
     verseSortMode: 'quran',
@@ -181,7 +204,7 @@ export async function setCategoriesExpanded(ids: string[], isExpanded: boolean) 
 /** Soft delete: the category and its whole subtree, plus their verse assignments. */
 export async function deleteCategory(id: string) {
   const d = db();
-  const all = await listCategories();
+  const all = await listCategories('all');
   const doomed: string[] = [];
   const walk = (cid: string) => {
     doomed.push(cid);
@@ -229,7 +252,7 @@ export function isDescendant(all: Category[], id: string, targetId: string | nul
 }
 
 export async function moveCategory(id: string, newParentId: string | null, index: number) {
-  const all = await listCategories();
+  const all = await listCategories('all');
   // Cycle guard lives here, not in the UI — a drop is not the only way to move.
   if (isDescendant(all, id, newParentId)) return;
 
@@ -237,6 +260,98 @@ export async function moveCategory(id: string, newParentId: string | null, index
   const before = index > 0 ? siblings[index - 1]?.sortKey ?? null : null;
   const after = siblings[index]?.sortKey ?? null;
   await updateCategory(id, { parentId: newParentId, sortKey: keyBetween(before, after) });
+}
+
+/**
+ * Merge one topic into another while keeping the target topic's title.
+ *
+ * Direct verse assignments move to the target, existing target assignments
+ * win over duplicates, ranges retain their group ids, and source subtopics are
+ * re-parented instead of being deleted. Q/A items cannot be merged through
+ * this operation.
+ */
+export async function mergeCategory(sourceId: string, targetId: string) {
+  if (sourceId === targetId) throw new Error('A topic cannot be merged into itself');
+  const d = db();
+  const all = await listCategories('all');
+  const source = all.find((category) => category.id === sourceId);
+  const target = all.find((category) => category.id === targetId);
+  if (!source || !target) throw new Error('One of the topics no longer exists');
+  if (source.description === QA_CATEGORY_MARKER || target.description === QA_CATEGORY_MARKER) {
+    throw new Error('Q/A items cannot be merged as topics');
+  }
+  if (isDescendant(all, sourceId, targetId)) {
+    throw new Error('Choose a topic outside the topic being removed');
+  }
+
+  const [sourceRows, targetRows] = await Promise.all([
+    d.categoryVerses.where('categoryId').equals(sourceId).toArray(),
+    d.categoryVerses.where('categoryId').equals(targetId).toArray(),
+  ]);
+  const sourceLinks = alive(sourceRows).sort(bySortKey);
+  const targetByVerse = new Map(targetRows.map((row) => [row.verseKey, row]));
+  let lastVerseSortKey = alive(targetRows).sort(bySortKey).at(-1)?.sortKey ?? null;
+  const children = all.filter((category) => category.parentId === sourceId).sort(bySortKey);
+  let lastChildSortKey = all
+    .filter((category) => category.parentId === targetId)
+    .sort(bySortKey)
+    .at(-1)?.sortKey ?? null;
+  const affectedVerseKeys = new Set(sourceLinks.map((row) => row.verseKey));
+  let moved = 0;
+  let duplicates = 0;
+
+  await d.transaction('rw', d.categories, d.categoryVerses, d.outbox, async () => {
+    const now = Date.now();
+    for (const sourceLink of sourceLinks) {
+      const targetLink = targetByVerse.get(sourceLink.verseKey);
+      if (targetLink?.deletedAt === null) {
+        const removed = { ...touch(sourceLink), deletedAt: now };
+        await d.categoryVerses.put(removed);
+        await log('categoryVerses', removed.id, 'delete', removed);
+        duplicates += 1;
+        continue;
+      }
+
+      lastVerseSortKey = keyAtEnd(lastVerseSortKey);
+      if (targetLink) {
+        const revived = touch({
+          ...targetLink,
+          deletedAt: null,
+          groupId: sourceLink.groupId ?? null,
+          sortKey: lastVerseSortKey,
+          note: sourceLink.note ?? targetLink.note,
+        });
+        const removed = { ...touch(sourceLink), deletedAt: now };
+        await d.categoryVerses.put(revived);
+        await log('categoryVerses', revived.id, 'put', revived);
+        await d.categoryVerses.put(removed);
+        await log('categoryVerses', removed.id, 'delete', removed);
+      } else {
+        const transferred = touch({
+          ...sourceLink,
+          categoryId: targetId,
+          sortKey: lastVerseSortKey,
+        });
+        await d.categoryVerses.put(transferred);
+        await log('categoryVerses', transferred.id, 'put', transferred);
+      }
+      moved += 1;
+    }
+
+    for (const child of children) {
+      lastChildSortKey = keyAtEnd(lastChildSortKey);
+      const reparented = touch({ ...child, parentId: targetId, sortKey: lastChildSortKey });
+      await d.categories.put(reparented);
+      await log('categories', reparented.id, 'put', reparented);
+    }
+
+    const removedSource = { ...touch(source), deletedAt: now };
+    await d.categories.put(removedSource);
+    await log('categories', removedSource.id, 'delete', removedSource);
+  });
+
+  for (const verseKey of affectedVerseKeys) await refreshMarker(verseKey);
+  return { moved, duplicates, subtopicsMoved: children.length };
 }
 
 // ------------------------------------------------------- verses ↔ categories
@@ -344,13 +459,18 @@ export async function addVersesToCategory(
   const existing = await d.categoryVerses.where('categoryId').equals(categoryId).toArray();
   const byKey = new Map(existing.map((r) => [r.verseKey, r]));
   let last = alive(existing).sort(bySortKey).at(-1)?.sortKey ?? null;
+  const groupId = verses.length > 1 ? newId() : null;
 
   const writes: CategoryVerse[] = [];
   for (const v of verses) {
     const cur = byKey.get(v.key);
-    if (cur && cur.deletedAt === null) continue;
+    if (cur && cur.deletedAt === null) {
+      // A partly filed selection still becomes one complete visual unit.
+      if (groupId) writes.push(touch({ ...cur, groupId }));
+      continue;
+    }
     if (cur) {
-      writes.push({ ...touch(cur), deletedAt: null });
+      writes.push({ ...touch(cur), deletedAt: null, groupId });
       continue;
     }
     last = keyAtEnd(last);
@@ -359,6 +479,7 @@ export async function addVersesToCategory(
       categoryId,
       verseKey: v.key,
       verseId: v.id,
+      groupId,
       sortKey: last,
       note: null,
       ...envelope(),
@@ -446,6 +567,53 @@ export async function reorderVerseInCategory(
   });
 }
 
+/** Reorders a standalone verse or a whole filed range as one manual-order unit. */
+export async function reorderVerseUnitInCategory(
+  categoryId: string,
+  linkId: string,
+  groupId: string | null,
+  toUnitIndex: number
+) {
+  const d = db();
+  const rows = (await versesInCategory(categoryId)).sort(bySortKey);
+  const units: CategoryVerse[][] = [];
+  const grouped = new Map<string, CategoryVerse[]>();
+
+  for (const row of rows) {
+    if (!row.groupId) {
+      units.push([row]);
+      continue;
+    }
+    const unit = grouped.get(row.groupId);
+    if (unit) unit.push(row);
+    else {
+      const next = [row];
+      grouped.set(row.groupId, next);
+      units.push(next);
+    }
+  }
+
+  const movingIndex = units.findIndex((unit) =>
+    groupId ? unit[0]?.groupId === groupId : unit.some((row) => row.id === linkId)
+  );
+  if (movingIndex < 0) return;
+
+  const [moving] = units.splice(movingIndex, 1);
+  // Drop indices describe the original list. Once an earlier unit is removed,
+  // every target after it shifts left by one.
+  const adjustedIndex = movingIndex < toUnitIndex ? toUnitIndex - 1 : toUnitIndex;
+  const index = Math.max(0, Math.min(adjustedIndex, units.length));
+  const before = index > 0 ? units[index - 1]?.at(-1)?.sortKey ?? null : null;
+  const after = units[index]?.[0]?.sortKey ?? null;
+  const sortKeys = keysBetween(before, after, moving.length);
+  const writes = moving.map((row, i) => touch({ ...row, sortKey: sortKeys[i] }));
+
+  await d.transaction('rw', d.categoryVerses, d.outbox, async () => {
+    await d.categoryVerses.bulkPut(writes);
+    for (const row of writes) await log('categoryVerses', row.id, 'put', row);
+  });
+}
+
 // ------------------------------------------------------------------- notes
 
 export const getNote = (verseKey: string) =>
@@ -519,39 +687,131 @@ export async function removeBookmark(id: string) {
 export const getReadingState = () => db().readingState.get('current');
 
 export async function saveReadingState(page: number, verseKey: string, offset: number) {
-  await db().readingState.put({
+  const d = db();
+  const current = await d.readingState.get('current');
+  if (
+    current?.page === page &&
+    current.verseKey === verseKey &&
+    Math.abs(current.scrollOffsetInPage - offset) < 0.01
+  ) return;
+  const readingState = {
     id: 'current',
     page,
     verseKey,
     scrollOffsetInPage: offset,
     updatedAt: Date.now(),
-  } satisfies ReadingState);
+  } satisfies ReadingState;
+  await d.transaction('rw', d.readingState, d.outbox, async () => {
+    await d.readingState.put(readingState);
+    await log('readingState', readingState.id, 'put', readingState);
+  });
+  window.dispatchEvent(new CustomEvent('quran-reading-state-saved'));
 }
 
 export const getSettings = () => db().settings.get('current');
 
 export async function saveSettings(patch: Partial<Settings>) {
+  const d = db();
   const cur = (await getSettings()) ?? {
     id: 'current' as const,
     theme: 'light' as const,
     pageScale: 1,
     layoutMode: 'auto' as const,
+    translationLanguage: 'en' as const,
+    categoryArabicFontSize: 22.5,
+    categoryTranslationFontSize: 24,
+    categoryTitleFontSize: 14,
+    recentSearchFontSize: 11,
     updatedAt: Date.now(),
   };
-  await db().settings.put({ ...cur, ...patch, updatedAt: Date.now() });
+  const settings = { ...cur, ...patch, updatedAt: Date.now() };
+  // Settings are presentation preferences, not account content. Keep them in
+  // this browser/app's IndexedDB so phone, tablet and desktop values can differ.
+  await d.settings.put(settings);
 }
 
 // -------------------------------------------------------------- maintenance
 
-/** Recompute every marker from scratch. Cheap enough to run after a sync pass. */
+/**
+ * Recompute the derived marker table after a sync pass.
+ *
+ * Do not clear and refill it verse by verse: Dexie publishes every intermediate
+ * state to live queries, which makes all Quran highlights briefly disappear and
+ * reappear. Skip the write entirely when nothing changed, and otherwise replace
+ * the snapshot in one transaction.
+ */
 export async function rebuildMarkers() {
   const d = db();
+  const [categories, notes, bookmarks, assignments] = await Promise.all([
+    d.categories.toArray(),
+    d.notes.toArray(),
+    d.bookmarks.toArray(),
+    d.categoryVerses.toArray(),
+  ]);
+  const qaCategoryIds = new Set(
+    alive(categories)
+      .filter((category) => category.description === QA_CATEGORY_MARKER)
+      .map((category) => category.id)
+  );
   const keys = new Set<string>();
-  (await d.notes.toArray()).forEach((n) => keys.add(n.verseKey));
-  (await d.bookmarks.toArray()).forEach((b) => keys.add(b.verseKey));
-  (await d.categoryVerses.toArray()).forEach((l) => keys.add(l.verseKey));
-  await d.verseMarkers.clear();
-  for (const k of keys) await refreshMarker(k);
+  notes.forEach((note) => keys.add(note.verseKey));
+  bookmarks.forEach((bookmark) => keys.add(bookmark.verseKey));
+  assignments.forEach((assignment) => keys.add(assignment.verseKey));
+
+  const noteByVerse = new Map(notes.map((note) => [note.verseKey, note]));
+  const bookmarksByVerse = new Map<string, Bookmark[]>();
+  const assignmentsByVerse = new Map<string, CategoryVerse[]>();
+  for (const bookmark of bookmarks) {
+    const rows = bookmarksByVerse.get(bookmark.verseKey) ?? [];
+    rows.push(bookmark);
+    bookmarksByVerse.set(bookmark.verseKey, rows);
+  }
+  for (const assignment of assignments) {
+    const rows = assignmentsByVerse.get(assignment.verseKey) ?? [];
+    rows.push(assignment);
+    assignmentsByVerse.set(assignment.verseKey, rows);
+  }
+
+  const next: VerseMarker[] = [];
+  for (const verseKey of keys) {
+    const note = noteByVerse.get(verseKey);
+    const liveBookmarks = alive(bookmarksByVerse.get(verseKey) ?? []);
+    const liveAssignments = alive(assignmentsByVerse.get(verseKey) ?? []);
+    const qaCount = liveAssignments.filter((assignment) => qaCategoryIds.has(assignment.categoryId)).length;
+    const topicAssignments = liveAssignments.filter((assignment) => !qaCategoryIds.has(assignment.categoryId));
+    const marker: VerseMarker = {
+      verseKey,
+      hasNote: !!note && note.deletedAt === null && note.contentText.trim().length > 0,
+      hasBookmark: liveBookmarks.length > 0,
+      categoryCount: liveAssignments.length - qaCount,
+      categoryGroupKeys: topicAssignments
+        .map((assignment) => `${assignment.categoryId}:${assignment.groupId ?? assignment.id}`)
+        .sort(),
+      qaCount,
+      bookmarkColor: liveBookmarks[0]?.color ?? null,
+    };
+    if (marker.hasNote || marker.hasBookmark || marker.categoryCount > 0 || marker.qaCount > 0) next.push(marker);
+  }
+
+  const byKey = (a: VerseMarker, b: VerseMarker) => a.verseKey.localeCompare(b.verseKey);
+  const current = (await d.verseMarkers.toArray()).sort(byKey);
+  next.sort(byKey);
+  const unchanged = current.length === next.length && current.every((marker, index) => {
+    const candidate = next[index];
+    return marker.verseKey === candidate.verseKey
+      && marker.hasNote === candidate.hasNote
+      && marker.hasBookmark === candidate.hasBookmark
+      && marker.categoryCount === candidate.categoryCount
+      && JSON.stringify(marker.categoryGroupKeys ?? []) === JSON.stringify(candidate.categoryGroupKeys ?? [])
+      && marker.qaCount === candidate.qaCount
+      && marker.bookmarkColor === candidate.bookmarkColor;
+  });
+  if (unchanged) return;
+
+  await d.transaction('rw', d.verseMarkers, async () => {
+    await d.verseMarkers.clear();
+    if (next.length) await d.verseMarkers.bulkPut(next);
+  });
 }
 
 export const outboxSize = () => db().outbox.count();

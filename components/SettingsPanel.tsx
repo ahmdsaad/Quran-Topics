@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { db } from '@/lib/db/schema';
 import { exportAll, importAll, outboxSize, rebuildMarkers, saveSettings } from '@/lib/db/repo';
 import { useUI } from '@/lib/store';
+import type { TranslationLanguage } from '@/lib/types';
+import TranslationLanguageSelect from '@/components/categories/TranslationLanguageSelect';
 
 const THEMES = [
   { id: 'light', label: 'Light' },
@@ -14,10 +16,30 @@ const THEMES = [
 export default function SettingsPanel({
   scale,
   onScale,
+  translationLanguage,
+  onTranslationLanguage,
+  categoryArabicFontSize,
+  onCategoryArabicFontSize,
+  categoryTranslationFontSize,
+  onCategoryTranslationFontSize,
+  categoryTitleFontSize,
+  onCategoryTitleFontSize,
+  recentSearchFontSize,
+  onRecentSearchFontSize,
   onClose,
 }: {
   scale: number;
   onScale: (v: number) => void;
+  translationLanguage: TranslationLanguage;
+  onTranslationLanguage: (language: TranslationLanguage) => void;
+  categoryArabicFontSize: number;
+  onCategoryArabicFontSize: (size: number) => void;
+  categoryTranslationFontSize: number;
+  onCategoryTranslationFontSize: (size: number) => void;
+  categoryTitleFontSize: number;
+  onCategoryTitleFontSize: (size: number) => void;
+  recentSearchFontSize: number;
+  onRecentSearchFontSize: (size: number) => void;
   onClose: () => void;
 }) {
   const showToast = useUI((s) => s.showToast);
@@ -65,6 +87,22 @@ export default function SettingsPanel({
       <div className="scroll-y flex-1 space-y-6 p-4">
         <section>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-soft)' }}>
+            Verse translation
+          </h3>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm">Translation language</span>
+            <TranslationLanguageSelect
+              value={translationLanguage}
+              onChange={(language) => {
+                onTranslationLanguage(language);
+                void saveSettings({ translationLanguage: language });
+              }}
+            />
+          </div>
+        </section>
+
+        <section>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-soft)' }}>
             Appearance
           </h3>
           <div className="flex gap-2">
@@ -83,6 +121,68 @@ export default function SettingsPanel({
               </button>
             ))}
           </div>
+        </section>
+
+        <section>
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-soft)' }}>
+            Topic title size
+          </h3>
+          <FontSizeControl
+            label="Arabic and English titles"
+            value={categoryTitleFontSize}
+            min={10}
+            max={30}
+            step={1}
+            onChange={(size) => {
+              onCategoryTitleFontSize(size);
+              void saveSettings({ categoryTitleFontSize: size });
+            }}
+          />
+        </section>
+
+        <section>
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-soft)' }}>
+            Topic verse sizes
+          </h3>
+          <FontSizeControl
+            label="Arabic"
+            value={categoryArabicFontSize}
+            min={14}
+            max={36}
+            step={0.5}
+            onChange={(size) => {
+              onCategoryArabicFontSize(size);
+              void saveSettings({ categoryArabicFontSize: size });
+            }}
+          />
+          <FontSizeControl
+            label="Translation"
+            value={categoryTranslationFontSize}
+            min={12}
+            max={36}
+            step={1}
+            onChange={(size) => {
+              onCategoryTranslationFontSize(size);
+              void saveSettings({ categoryTranslationFontSize: size });
+            }}
+          />
+        </section>
+
+        <section>
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-soft)' }}>
+            Search
+          </h3>
+          <FontSizeControl
+            label="Recent searches"
+            value={recentSearchFontSize}
+            min={10}
+            max={28}
+            step={1}
+            onChange={(size) => {
+              onRecentSearchFontSize(size);
+              void saveSettings({ recentSearchFontSize: size });
+            }}
+          />
         </section>
 
         <section>
@@ -166,6 +266,40 @@ export default function SettingsPanel({
         </section>
       </div>
     </div>
+  );
+}
+
+function FontSizeControl({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="mb-3 block last:mb-0">
+      <span className="mb-1 flex items-center justify-between text-xs">
+        <span>{label}</span>
+        <span style={{ color: 'var(--ink-soft)' }}>{value}px</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-full accent-[var(--accent)]"
+      />
+    </label>
   );
 }
 

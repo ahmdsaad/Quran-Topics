@@ -45,6 +45,24 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Android WebView may treat icon glyphs inside buttons as selectable text when
+   a long press begins over the path-based Mushaf. That is why the active Read
+   hamburger appeared highlighted even though the tab never changed. Controls
+   are interaction targets, not selectable document text. */
+button,
+[role='button'] {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+[contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 html,
 body {
   height: 100%;
@@ -61,18 +79,150 @@ body {
 
 /* ---------------------------------------------------------------- mushaf page */
 
+.mushaf-reader {
+  background: #fffdf8;
+}
+
+/* A quiet page edge shared by every reader workspace (Read, Topics, Q/A,
+   Search, and Marks). The existing gap keeps the rule from touching the next
+   page while avoiding the boxed-card appearance the reader intentionally lacks. */
+.mushaf-page-frame {
+  border-bottom: 1px solid #e5dfd3;
+}
+
+.svg-mushaf-page {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 382.68 / 547.09;
+  overflow: hidden;
+  background: #fffdf8;
+  color: #17150f;
+  /* The Quran uses custom tap and hold gestures. Native WebView text
+     selection can otherwise capture a hold and highlight unrelated UI text
+     (commonly the bottom Read tab) instead of selecting the ayah. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: pan-y;
+}
+
+.svg-mushaf-page > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Keep the page large without cropping surah headers or page numbers. */
+  transform: scale(1.04);
+  transform-origin: center;
+}
+
+@media (max-width: 1023px) {
+  .svg-mushaf-page {
+    aspect-ratio: 255 / 488;
+  }
+
+  .svg-mushaf-page > svg {
+    transform: none;
+  }
+}
+
+.svg-mushaf-word {
+  cursor: pointer;
+}
+
+.svg-verse-highlight {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 0.55;
+}
+
+.svg-verse-highlight--categorized {
+  fill: #fff1a3;
+  fill-opacity: 0.24;
+  stroke: #dec35e;
+  stroke-opacity: 0.23;
+}
+
+.svg-verse-highlight--categorized-alt {
+  fill: #f3d56f;
+  fill-opacity: 0.28;
+  stroke: #cfad38;
+  stroke-opacity: 0.26;
+}
+
+.svg-verse-highlight--noted {
+  fill: #86d69b;
+  fill-opacity: 0.36;
+  stroke: #4ca866;
+  stroke-opacity: 0.35;
+}
+
+.svg-verse-highlight--searched {
+  fill: #72d98a;
+  fill-opacity: 0.5;
+  stroke: #359f52;
+  stroke-opacity: 0.65;
+}
+
+.svg-verse-highlight--selected {
+  fill: #b99455;
+  fill-opacity: 0.25;
+  stroke: #8a6d3b;
+  stroke-opacity: 0.55;
+}
+
+.svg-verse-highlight--hover {
+  fill: #b99455;
+  fill-opacity: 0.1;
+  stroke: none;
+}
+
+.svg-bookmark-line {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.svg-qa-line {
+  vector-effect: non-scaling-stroke;
+  stroke: #2774d8;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+}
+
+.verse-popup-translation {
+  font-size: 12px;
+}
+
+@media (max-width: 1023px) {
+  .verse-popup-translation {
+    font-size: 18px;
+  }
+
+  .verse-popup-drag-grip {
+    display: none;
+  }
+}
+
 .mushaf-page {
   container-type: inline-size;
   position: relative;
-  background: var(--paper);
-  color: var(--ink);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: var(--shadow);
-  padding: 3.5cqw 4.5cqw 2cqw;
+  isolation: isolate;
+  aspect-ratio: 1 / 1.52;
+  overflow: hidden;
+  background: #fffdf8;
+  color: #17150f;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 4.2cqw 5.2cqw 2.4cqw;
   display: flex;
   flex-direction: column;
   min-height: 40vh;
+}
+
+/* The restrained double rule mirrors the text frame of a printed Madinah
+   Mushaf without competing with the QPC page glyphs. */
+.mushaf-page::before {
+  content: none;
 }
 
 .mushaf-line {
@@ -108,17 +258,8 @@ body {
   text-decoration-skip-ink: none;
 }
 
-/*
- * A marked verse is underlined, not boxed.
- *
- * Two reasons. Words on a justified Mushaf line sit in variable-width gaps, so a
- * background per word reads as a row of disconnected chips rather than one
- * marked verse. And the word spans inherit the line's 1.7 line-height, so any
- * box or inset shadow is far taller than the glyphs and floats away from them.
- * `text-decoration` tracks the real text baseline, so it lands under the letters
- * at any size and the eye joins it across the gaps into one continuous mark.
- */
-.mushaf-word[data-marked='true'] {
+/* Bookmarks retain their compact color underline; notes use a green band. */
+.mushaf-word[data-bookmarked='true'] {
   text-decoration-line: underline;
   text-decoration-color: var(--marker, var(--accent));
   text-decoration-thickness: 0.07em;
@@ -152,6 +293,29 @@ body {
   box-shadow: inset 0 -0.09em 0 color-mix(in srgb, var(--accent) 65%, transparent);
 }
 
+.verse-band[data-kind='categorized'] {
+  background-color: color-mix(in srgb, #f4cf4f 38%, transparent);
+  border: 1.5px solid color-mix(in srgb, #c89500 58%, transparent);
+  border-radius: 0.48em;
+  box-shadow: inset 0 -0.12em 0 color-mix(in srgb, #d9a800 30%, transparent);
+}
+
+.verse-band[data-kind='qa'] {
+  border-bottom: 0.12em solid #2774d8;
+  border-radius: 0;
+}
+
+.verse-band[data-kind='noted'] {
+  background-color: color-mix(in srgb, #86d69b 34%, transparent);
+  border: 1px solid color-mix(in srgb, #4ca866 30%, transparent);
+  border-radius: 0.38em;
+}
+
+.verse-band[data-kind='searched'] {
+  background: rgb(114 217 138 / 50%);
+  border: 1px solid rgb(53 159 82 / 65%);
+}
+
 .verse-band[data-kind='hover'] {
   background-color: color-mix(in srgb, var(--accent) 9%, transparent);
 }
@@ -161,6 +325,15 @@ body {
 .mushaf-body {
   position: relative;
   z-index: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(var(--mushaf-lines, 15), minmax(0, 1fr));
+  align-items: center;
+}
+
+.mushaf-body > * {
+  min-height: 0;
+  align-self: center;
 }
 
 /* Before this page's font arrives, show real Uthmani unicode in the same boxes. */

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -17,31 +17,41 @@ import {
 import type { Meta } from '@/lib/types';
 import {
   addVerseToCategory,
+  getVerseByKey,
   moveCategory,
   listCategories,
-  reorderVerseInCategory,
+  reorderVerseUnitInCategory,
   removeVerseFromCategory,
 } from '@/lib/db/repo';
 import { useUI } from '@/lib/store';
 
 export type DragPayload =
-  | { kind: 'verse'; verseKey: string; verseId: number; fromCategoryId?: string; linkId?: string }
+  | {
+      kind: 'verse';
+      verseKey: string;
+      verseId?: number;
+      fromCategoryId?: string;
+      linkId?: string;
+      groupId?: string | null;
+    }
   | { kind: 'category'; id: string; name: string };
 
 interface Ctx {
   active: DragPayload | null;
+  /** Dragging is intentionally desktop-only; touch devices use explicit actions. */
+  enabled: boolean;
   /** Category currently being dragged, if any — used to disable invalid drops. */
   draggingCategoryId: string | null;
 }
-const DragCtx = createContext<Ctx>({ active: null, draggingCategoryId: null });
+const DragCtx = createContext<Ctx>({ active: null, enabled: false, draggingCategoryId: null });
 export const useDrag = () => useContext(DragCtx);
 
 /**
  * One DndContext for the whole app.
  *
- * The activation constraint is the load-bearing detail on a tablet: without a
- * press delay, every attempt to scroll a list starts a drag instead. 200ms/8px
- * is the threshold that lets a flick scroll and a deliberate press drag.
+ * Dragging is enabled only for a desktop-class pointer. Touch layouts use
+ * explicit Move controls and long-press range selection instead, avoiding
+ * accidental drops while reading or scrolling.
  */
 export default function DragLayer({
   meta,
@@ -51,7 +61,19 @@ export default function DragLayer({
   children: React.ReactNode;
 }) {
   const [active, setActive] = useState<DragPayload | null>(null);
+  const [desktopDragEnabled, setDesktopDragEnabled] = useState(false);
   const showToast = useUI((s) => s.showToast);
+
+  useEffect(() => {
+    const desktopPointer = window.matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)');
+    const update = () => {
+      setDesktopDragEnabled(desktopPointer.matches);
+      if (!desktopPointer.matches) setActive(null);
+    };
+    update();
+    desktopPointer.addEventListener('change', update);
+    return () => desktopPointer.removeEventListener('change', update);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
@@ -74,6 +96,7 @@ export default function DragLayer({
   };
 
   const onDragStart = (e: DragStartEvent) => {
+    if (!desktopDragEnabled) return;
     setActive((e.active.data.current as DragPayload) ?? null);
   };
 
@@ -89,15 +112,22 @@ export default function DragLayer({
 
     try {
       if (payload.kind === 'verse') {
+        const verseId = payload.verseId ?? (await getVerseByKey(payload.verseKey))?.id;
+        if (verseId === undefined) throw new Error(`Verse ${payload.verseKey} was not found`);
         if (over.type === 'category') {
           if (payload.fromCategoryId && payload.fromCategoryId !== over.id) {
             await removeVerseFromCategory(payload.fromCategoryId, payload.verseKey);
           }
-          await addVerseToCategory(over.id, payload.verseKey, payload.verseId);
+          await addVerseToCategory(over.id, payload.verseKey, verseId);
           showToast(`${payload.verseKey} added`);
         } else if (over.type === 'verse-slot') {
           if (payload.fromCategoryId === over.categoryId && payload.linkId) {
-            await reorderVerseInCategory(over.categoryId, payload.linkId, over.index);
+            await reorderVerseUnitInCategory(
+              over.categoryId,
+              payload.linkId,
+              payload.groupId ?? null,
+              over.index
+            );
           } else {
             if (payload.fromCategoryId) {
               await removeVerseFromCategory(payload.fromCategoryId, payload.verseKey);
@@ -105,7 +135,7 @@ export default function DragLayer({
             await addVerseToCategory(
               over.categoryId,
               payload.verseKey,
-              payload.verseId,
+              verseId,
               over.index
             );
             showToast(`${payload.verseKey} added`);
@@ -117,7 +147,7 @@ export default function DragLayer({
       if (payload.kind === 'category') {
         if (over.type === 'category') {
           if (over.id === payload.id) return;
-          const all = await listCategories();
+          const all = await listCategories('all');
           const kids = all.filter((c) => c.parentId === over.id);
           await moveCategory(payload.id, over.id, kids.length);
         } else if (over.type === 'category-slot') {
@@ -133,15 +163,16 @@ export default function DragLayer({
   const ctx = useMemo(
     () => ({
       active,
+      enabled: desktopDragEnabled,
       draggingCategoryId: active?.kind === 'category' ? active.id : null,
     }),
-    [active]
+    [active, desktopDragEnabled]
   );
 
   return (
     <DragCtx.Provider value={ctx}>
       <DndContext
-        sensors={sensors}
+        sensors={desktopDragEnabled ? sensors : []}
         collisionDetection={collisionDetection}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
@@ -154,7 +185,7 @@ export default function DragLayer({
               {active.kind === 'verse' ? (
                 <span>
                   <strong>{active.verseKey}</strong>
-                  <span style={{ color: 'var(--ink-soft)' }}> · drop on a category</span>
+                  <span style={{ color: 'var(--ink-soft)' }}> · drop on a topic</span>
                 </span>
               ) : (
                 <span>▤ {active.name}</span>

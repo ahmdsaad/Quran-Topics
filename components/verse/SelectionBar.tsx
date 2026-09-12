@@ -57,8 +57,8 @@ export default function SelectionBar({ meta }: { meta: Meta }) {
 
   return (
     <div
-      className="panel fixed bottom-4 left-1/2 z-[62] flex -translate-x-1/2 items-center gap-2 px-3 py-2"
-      style={{ maxWidth: 'calc(100vw - 1.5rem)' }}
+      className="panel fixed bottom-4 left-1/2 z-[62] flex w-[calc(100vw-1rem)] -translate-x-1/2 items-center justify-center gap-2 px-3 py-2 sm:w-auto"
+      style={{ maxWidth: 'calc(100vw - 1rem)' }}
       role="status"
     >
       {!complete ? (
@@ -72,16 +72,23 @@ export default function SelectionBar({ meta }: { meta: Meta }) {
         </>
       ) : (
         <>
-          <span className="px-1 text-[13px] whitespace-nowrap">
+          <span className="hidden px-1 text-[13px] whitespace-nowrap sm:inline">
             <strong>{verses.length || '…'}</strong> {verses.length === 1 ? 'verse' : 'verses'}
             <span style={{ color: 'var(--ink-soft)' }}> · {rangeLabel(from, to)}</span>
           </span>
           <button
-            className="btn btn-primary px-2.5 py-1 text-xs"
+            className="btn btn-primary whitespace-nowrap px-2.5 py-1 text-xs"
             disabled={!verses.length}
-            onClick={() => openAssign(verses.map((v) => v.key))}
+            onClick={() => openAssign(verses.map((v) => v.key), 'topics')}
           >
-            ▤ Add to categories
+            ▤ Add to topics
+          </button>
+          <button
+            className="btn btn-ghost whitespace-nowrap px-2.5 py-1 text-xs"
+            disabled={!verses.length}
+            onClick={() => openAssign(verses.map((v) => v.key), 'qa')}
+          >
+            ? Add to Q/A
           </button>
           <button
             className="btn btn-ghost px-2 py-1 text-xs"

@@ -4,7 +4,7 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Quran Classification',
   description:
-    'Read the Quran in a page-perfect Mushaf layout, annotate verses, and organise them into categories. Works offline.',
+    'Read the Quran in a page-perfect Mushaf layout, annotate verses, and organise them into topics. Works offline.',
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Quran' },
 };

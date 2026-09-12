@@ -7,8 +7,18 @@ import { getVersesByKeys, listBookmarks, listNotes, removeBookmark } from '@/lib
 import { useUI } from '@/lib/store';
 import { PanelHeader } from '@/components/SettingsPanel';
 
-export default function BookmarksPanel({ meta, onClose }: { meta: Meta; onClose: () => void }) {
-  const { jumpTo, setMobilePane, openNote, showToast } = useUI();
+export default function BookmarksPanel({
+  meta,
+  onClose,
+  selectedVerseKey,
+  onVerseOpen,
+}: {
+  meta: Meta;
+  onClose: () => void;
+  selectedVerseKey?: string | null;
+  onVerseOpen: (verse: Verse) => void;
+}) {
+  const { openNote, showToast } = useUI();
   const [tab, setTab] = useState<'bookmarks' | 'notes'>('bookmarks');
 
   const bookmarks = useLiveQuery(() => listBookmarks(), [], [] as Bookmark[]);
@@ -33,10 +43,7 @@ export default function BookmarksPanel({ meta, onClose }: { meta: Meta; onClose:
 
   const go = (key: string) => {
     const v = verses.get(key);
-    if (v) {
-      jumpTo(v.page);
-      setMobilePane('reader');
-    }
+    if (v) onVerseOpen(v);
   };
 
   return (
@@ -70,7 +77,10 @@ export default function BookmarksPanel({ meta, onClose }: { meta: Meta; onClose:
                 <div
                   key={b.id}
                   className="group flex items-start gap-2 border-b px-3 py-2.5"
-                  style={{ borderColor: 'var(--border)' }}
+                  style={{
+                    borderColor: 'var(--border)',
+                    background: selectedVerseKey === b.verseKey ? 'var(--accent-soft)' : undefined,
+                  }}
                 >
                   <span
                     className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
@@ -114,24 +124,36 @@ export default function BookmarksPanel({ meta, onClose }: { meta: Meta; onClose:
             const v = verses.get(n.verseKey);
             const s = v ? meta.surahs.find((x) => x.number === v.surah) : null;
             return (
-              <button
+              <div
                 key={n.id}
-                className="block w-full border-b px-3 py-2.5 text-left"
-                style={{ borderColor: 'var(--border)' }}
-                onClick={() => openNote(n.verseKey)}
+                className="group flex items-start border-b px-3 py-2.5"
+                style={{
+                  borderColor: 'var(--border)',
+                  background: selectedVerseKey === n.verseKey ? 'var(--accent-soft)' : undefined,
+                }}
               >
-                <span className="flex items-baseline gap-2">
-                  <span className="text-[11px] font-semibold" style={{ color: 'var(--accent)' }}>
-                    {s?.nameSimple} {v?.ayah}
+                <button className="min-w-0 flex-1 text-left" onClick={() => go(n.verseKey)}>
+                  <span className="flex items-baseline gap-2">
+                    <span className="text-[11px] font-semibold" style={{ color: 'var(--accent)' }}>
+                      {s?.nameSimple} {v?.ayah}
+                    </span>
+                    <span className="text-[10px]" style={{ color: 'var(--ink-soft)' }}>
+                      p.{v?.page}
+                    </span>
                   </span>
-                  <span className="text-[10px]" style={{ color: 'var(--ink-soft)' }}>
-                    p.{v?.page}
+                  <span className="mt-0.5 line-clamp-3 block text-xs" style={{ color: 'var(--ink-soft)' }}>
+                    {n.contentText}
                   </span>
-                </span>
-                <span className="mt-0.5 line-clamp-3 block text-xs" style={{ color: 'var(--ink-soft)' }}>
-                  {n.contentText}
-                </span>
-              </button>
+                </button>
+                <button
+                  className="btn btn-ghost ms-2 h-8 min-h-0 shrink-0 px-2 text-sm"
+                  onClick={() => openNote(n.verseKey)}
+                  aria-label={`Edit note for verse ${n.verseKey}`}
+                  title="Edit note"
+                >
+                  ✎
+                </button>
+              </div>
             );
           })
         ) : (

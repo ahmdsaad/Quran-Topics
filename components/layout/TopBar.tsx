@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Meta } from '@/lib/types';
 import { useUI } from '@/lib/store';
-import { getVerseByKey } from '@/lib/db/repo';
+import { getVerseByKey, listCategories } from '@/lib/db/repo';
+import {
+  exportAllCategoriesDocx,
+  exportAllCategoriesXlsx,
+} from '@/lib/export/exporters';
+import AccountButton from '@/components/auth/AccountButton';
 
 export default function TopBar({
   meta,
@@ -21,7 +26,23 @@ export default function TopBar({
   onScale: (v: number) => void;
 }) {
   const [navOpen, setNavOpen] = useState(false);
-  const { setMobilePane, mobilePane } = useUI();
+  const [exporting, setExporting] = useState<'docx' | 'xlsx' | null>(null);
+  const { setMobilePane, mobilePane, showToast } = useUI();
+
+  const exportAll = async (kind: 'docx' | 'xlsx') => {
+    setExporting(kind);
+    try {
+      const categories = await listCategories('all');
+      const exporter = kind === 'docx' ? exportAllCategoriesDocx : exportAllCategoriesXlsx;
+      await exporter(categories, meta);
+      showToast(`All topics exported as ${kind === 'docx' ? 'Word' : 'Excel'}`);
+    } catch (error) {
+      console.error('[export all] failed', error);
+      showToast('Export failed');
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const surahOfPage = useMemo(() => {
     const range = meta.pageIndex[String(currentPage)];
@@ -47,38 +68,17 @@ export default function TopBar({
         className="flex shrink-0 items-center gap-2 border-b px-3 py-2"
         style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
       >
-        <button
-          className="btn btn-ghost gap-2 px-2"
-          onClick={() => setNavOpen(true)}
-          aria-label="Jump to surah, page or juz"
-        >
-          <span className="text-base leading-none">☰</span>
-          <span className="hidden text-left sm:block">
-            <span className="block text-[13px] font-semibold leading-tight">
-              {surahOfPage.nameSimple}
-            </span>
-            <span className="block text-[11px] leading-tight" style={{ color: 'var(--ink-soft)' }}>
-              Page {currentPage} · Juz {juzOfPage}
-            </span>
-          </span>
-        </button>
-
-        <div className="flex-1" />
-
-        <span
-          className="hidden text-lg sm:block"
-          dir="rtl"
-          style={{ color: 'var(--accent)', fontFamily: "'Scheherazade New', serif" }}
-        >
-          {surahOfPage.nameArabic}
-        </span>
-
-        <div className="flex-1" />
-
-        {dual ? (
-          <div className="flex items-center gap-1">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+          {dual ? (
+            <div className="flex items-center gap-1">
+            <TabBtn active={mobilePane === 'reader'} onClick={() => setMobilePane('reader')}>
+              Read
+            </TabBtn>
             <TabBtn active={mobilePane === 'categories'} onClick={() => setMobilePane('categories')}>
-              Categories
+              Topics
+            </TabBtn>
+            <TabBtn active={mobilePane === 'qa'} onClick={() => setMobilePane('qa')}>
+              Q/A
             </TabBtn>
             <TabBtn active={mobilePane === 'search'} onClick={() => setMobilePane('search')}>
               Search
@@ -89,16 +89,35 @@ export default function TopBar({
             <TabBtn active={mobilePane === 'settings'} onClick={() => setMobilePane('settings')}>
               Settings
             </TabBtn>
+            </div>
+          ) : null}
+          <div className="hidden items-center gap-1 sm:flex" aria-label="Export all topics">
+            <button className="btn btn-ghost px-2 text-[12px]" disabled={exporting !== null}
+              onClick={() => exportAll('docx')} title="Export all topics to Word">
+              {exporting === 'docx' ? 'Exporting…' : 'Word'}
+            </button>
+            <button className="btn btn-ghost px-2 text-[12px]" disabled={exporting !== null}
+              onClick={() => exportAll('xlsx')} title="Export all topics to Excel">
+              {exporting === 'xlsx' ? 'Exporting…' : 'Excel'}
+            </button>
           </div>
-        ) : (
-          <button
-            className="btn btn-ghost px-2"
-            onClick={() => setMobilePane('search')}
-            aria-label="Search"
-          >
-            ⌕
-          </button>
-        )}
+          <AccountButton />
+        </div>
+
+        <button className="btn btn-ghost shrink-0 gap-2 px-2" onClick={() => setNavOpen(true)}
+          aria-label="Jump to surah, page or juz">
+          <span className="hidden text-right sm:block">
+            <span className="block text-[13px] font-semibold leading-tight">{surahOfPage.nameSimple}</span>
+            <span className="block text-[11px] leading-tight" style={{ color: 'var(--ink-soft)' }}>
+              Page {currentPage} · Juz {juzOfPage}
+            </span>
+          </span>
+          <span className="hidden text-lg sm:block" dir="rtl"
+            style={{ color: 'var(--accent)', fontFamily: "'Scheherazade New', serif" }}>
+            {surahOfPage.nameArabic}
+          </span>
+          <span className="text-base leading-none">☰</span>
+        </button>
       </header>
 
       {navOpen ? (
@@ -109,7 +128,6 @@ export default function TopBar({
           onJump={(p) => {
             onJump(p);
             setNavOpen(false);
-            setMobilePane('reader');
           }}
         />
       ) : null}

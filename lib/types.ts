@@ -53,7 +53,12 @@ export interface Verse {
   juz: number;
   text: string;
   simple: string;
+  /** Selected text editions, bundled for offline use. */
+  translations: Record<TranslationLanguage, string>;
 }
+
+export type TranslationLanguage = 'en' | 'ru' | 'it' | 'fr' | 'es';
+export type CategorySpace = 'topics' | 'qa';
 
 // ------------------------------------------------------------- user data types
 
@@ -74,7 +79,10 @@ export interface SyncEnvelope {
 export interface Category extends SyncEnvelope {
   id: string;
   parentId: string | null;
+  /** Legacy/fallback title retained for existing synced data. */
   name: string;
+  nameArabic?: string;
+  nameEnglish?: string;
   description: string | null;
   color: string | null;
   /** fractional index among siblings — see lib/ordering.ts */
@@ -88,6 +96,8 @@ export interface CategoryVerse extends SyncEnvelope {
   categoryId: string;
   verseKey: string;
   verseId: number;
+  /** Shared by verses filed together as a range; absent for standalone verses. */
+  groupId?: string | null;
   sortKey: string;
   note: string | null;
 }
@@ -123,6 +133,11 @@ export interface Settings {
   theme: 'light' | 'dark' | 'sepia';
   pageScale: number;
   layoutMode: 'auto' | 'single' | 'dual';
+  translationLanguage: TranslationLanguage;
+  categoryArabicFontSize: number;
+  categoryTranslationFontSize: number;
+  categoryTitleFontSize: number;
+  recentSearchFontSize: number;
   updatedAt: number;
 }
 
@@ -131,7 +146,12 @@ export interface VerseMarker {
   verseKey: string;
   hasNote: boolean;
   hasBookmark: boolean;
+  /** Topic assignments use the yellow marker. */
   categoryCount: number;
+  /** Stable assignment/range keys used to keep one range on one yellow tone. */
+  categoryGroupKeys?: string[];
+  /** Q/A assignments use a separate blue underline. */
+  qaCount: number;
   bookmarkColor: string | null;
 }
 

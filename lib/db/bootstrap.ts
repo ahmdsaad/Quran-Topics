@@ -1,5 +1,5 @@
 import { db, CORPUS_VERSION } from './schema';
-import type { Meta, Verse } from '@/lib/types';
+import type { Meta, TranslationLanguage, Verse } from '@/lib/types';
 
 /**
  * First-run corpus load.
@@ -16,6 +16,7 @@ type PackedVerse = [
   juz: number,
   text: string,
   simple: string,
+  translations: Record<TranslationLanguage, string>,
 ];
 
 let metaCache: Meta | null = null;
@@ -47,8 +48,20 @@ export async function ensureCorpus(onProgress?: (pct: number, label: string) => 
   const d = db();
   const stamp = await d.kv.get('corpusVersion');
   const count = await d.verses.count();
+  const sample = count ? await d.verses.get(1) : undefined;
 
-  if (stamp?.value === CORPUS_VERSION && count === 6236) {
+  // A version stamp alone is not enough during local Fast Refresh: the module
+  // can update while the already-mounted app keeps its pre-translation rows.
+  // Validate the actual stored shape before accepting the offline corpus.
+  if (
+    stamp?.value === CORPUS_VERSION &&
+    count === 6236 &&
+    typeof sample?.translations?.en === 'string' &&
+    typeof sample?.translations?.ru === 'string' &&
+    typeof sample?.translations?.it === 'string' &&
+    typeof sample?.translations?.fr === 'string' &&
+    typeof sample?.translations?.es === 'string'
+  ) {
     onProgress?.(1, 'ready');
     await loadMeta();
     return;
@@ -63,7 +76,7 @@ export async function ensureCorpus(onProgress?: (pct: number, label: string) => 
 
   onProgress?.(0.5, 'Preparing your library…');
 
-  const verses: Verse[] = packed.map(([id, key, surah, ayah, page, juz, text, simple]) => ({
+  const verses: Verse[] = packed.map(([id, key, surah, ayah, page, juz, text, simple, translations]) => ({
     id,
     key,
     surah,
@@ -72,6 +85,7 @@ export async function ensureCorpus(onProgress?: (pct: number, label: string) => 
     juz,
     text,
     simple,
+    translations,
   }));
 
   await d.transaction('rw', d.verses, d.surahs, d.kv, async () => {

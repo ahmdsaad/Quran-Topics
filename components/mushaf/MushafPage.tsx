@@ -11,6 +11,7 @@ interface Props {
   meta: Meta;
   markers: Map<string, VerseMarker>;
   selectedVerse: string | null;
+  searchedVerse: string | null;
   /** Multi-verse selection, inclusive of both ends. */
   range: { from: string; to: string } | null;
   onVerseTap: (verseKey: string, el: HTMLElement, additive: boolean) => void;
@@ -54,6 +55,7 @@ export default function MushafPage({
   meta,
   markers,
   selectedVerse,
+  searchedVerse,
   range,
   onVerseTap,
 }: Props) {
@@ -62,7 +64,18 @@ export default function MushafPage({
   const [fitPx, setFitPx] = useState<number | null>(null);
   const [error, setError] = useState(false);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
-  const [bands, setBands] = useState<{ selected: Band[]; hovered: Band[] }>({
+  const [bands, setBands] = useState<{
+    categorized: Band[];
+    qa: Band[];
+    noted: Band[];
+    searched: Band[];
+    selected: Band[];
+    hovered: Band[];
+  }>({
+    categorized: [],
+    qa: [],
+    noted: [],
+    searched: [],
     selected: [],
     hovered: [],
   });
@@ -198,6 +211,10 @@ export default function MushafPage({
       };
 
       setBands({
+        categorized: bandsFor((key) => (markers.get(key)?.categoryCount ?? 0) > 0),
+        qa: bandsFor((key) => (markers.get(key)?.qaCount ?? 0) > 0),
+        noted: bandsFor((key) => markers.get(key)?.hasNote === true),
+        searched: bandsFor((key) => key === searchedVerse && !inSelection(key)),
         selected: bandsFor(inSelection),
         hovered: hoverKey && !inSelection(hoverKey) ? bandsFor((k) => k === hoverKey) : [],
       });
@@ -213,7 +230,7 @@ export default function MushafPage({
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [doc, fitPx, fontReady, hoverKey, inSelection]);
+  }, [doc, fitPx, fontReady, hoverKey, inSelection, markers, searchedVerse]);
 
   // Hover is resolved on the page, not per word: the target is the whole verse,
   // and a verse is many spans. Delegating also means one listener per page
@@ -236,7 +253,7 @@ export default function MushafPage({
 
   if (!doc) {
     return (
-      <div className="mushaf-page" style={{ aspectRatio: '1 / 1.5' }}>
+      <div className="mushaf-page">
         <div className="flex flex-1 flex-col justify-around" aria-hidden>
           {Array.from({ length: 15 }).map((_, i) => (
             <div
@@ -255,6 +272,8 @@ export default function MushafPage({
   }
 
   const surahByNumber = new Map(meta.surahs.map((s) => [s.number, s]));
+  const printedLineCount =
+    meta.linesPerPage[String(page)] ?? Math.max(...doc.lines.map((line) => line.n), doc.lines.length);
 
   return (
     <div
@@ -265,6 +284,18 @@ export default function MushafPage({
       onPointerLeave={() => setHoverKey(null)}
     >
       <div className="verse-bands" aria-hidden>
+        {bands.categorized.map((b, i) => (
+          <div key={`c${i}`} className="verse-band" data-kind="categorized" style={b} />
+        ))}
+        {bands.qa.map((b, i) => (
+          <div key={`qa${i}`} className="verse-band" data-kind="qa" style={b} />
+        ))}
+        {bands.noted.map((b, i) => (
+          <div key={`n${i}`} className="verse-band" data-kind="noted" style={b} />
+        ))}
+        {bands.searched.map((b, i) => (
+          <div key={`q${i}`} className="verse-band" data-kind="searched" style={b} />
+        ))}
         {bands.hovered.map((b, i) => (
           <div key={`h${i}`} className="verse-band" data-kind="hover" style={b} />
         ))}
@@ -273,24 +304,24 @@ export default function MushafPage({
         ))}
       </div>
 
-      <div className="mushaf-body flex flex-1 flex-col justify-center">
+      <div
+        className="mushaf-body flex-1"
+        style={{ ['--mushaf-lines' as string]: printedLineCount } as React.CSSProperties}
+      >
         {doc.lines.map((line) => {
           if (line.t === 'surah') {
             const s = surahByNumber.get(line.s);
             return (
-              <div className="surah-band" dir="rtl" key={`${page}-${line.n}`}>
+              <div className="surah-band" dir="rtl" key={`${page}-${line.n}`} style={{ gridRow: line.n }}>
                 <span style={{ opacity: 0.55 }}>﴿</span>
                 <span>سورة {s?.nameArabic}</span>
                 <span style={{ opacity: 0.55 }}>﴾</span>
-                <span dir="ltr" className="surah-band-en">
-                  {s?.nameSimple}
-                </span>
               </div>
             );
           }
           if (line.t === 'basmala') {
             return (
-              <div className="basmala-line" key={`${page}-${line.n}`}>
+              <div className="basmala-line" key={`${page}-${line.n}`} style={{ gridRow: line.n }}>
                 بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
               </div>
             );
@@ -301,6 +332,7 @@ export default function MushafPage({
               className="mushaf-line"
               data-fallback={!fontReady}
               style={{
+                gridRow: line.n,
                 ...(fontReady ? { fontFamily: `'${fontFamily(page)}'` } : {}),
                 ...(fontReady && fitPx ? { fontSize: `${fitPx}px` } : {}),
               }}
@@ -352,7 +384,7 @@ const Word = memo(function Word({
     <span
       className="mushaf-word"
       data-verse-key={verseKey}
-      data-marked={marker ? 'true' : 'false'}
+      data-bookmarked={marker?.hasBookmark ? 'true' : 'false'}
       data-selected={selected ? 'true' : 'false'}
       style={
         marker?.bookmarkColor

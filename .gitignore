@@ -4,6 +4,8 @@ out
 .DS_Store
 *.tsbuildinfo
 .vercel
+.env.local
+.env.*.local
 
 # Build artifacts from `npm run setup`, all regenerable and none of it committed.
 #
@@ -11,5 +13,8 @@ out
 # Complex copyright, not open source, and their redistribution terms are still
 # unresolved (see docs/PROJECT_STATE.md). Committing them would publish them.
 .cache/
+.pnpm-store/
+output/
 public/data/
 public/fonts/
+public/mushaf-svg/

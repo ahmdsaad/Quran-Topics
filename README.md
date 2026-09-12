@@ -2,7 +2,7 @@
 
 A tablet-first web app for reading the Quran in a page-perfect Mushaf layout,
 annotating verses with rich media, and organising them into an arbitrarily deep
-tree of categories. Everything runs locally in the browser — no account, no
+tree of topics. Everything runs locally in the browser — no account, no
 server, no network after first load.
 
 ## Run it
@@ -18,6 +18,9 @@ npm run dev       # http://localhost:3000
 7 MB) — all git-ignored, all regenerable. `npm run build` re-runs it
 automatically, so a clean CI or Vercel build needs no extra step.
 
+For Google account login and online deployment configuration, see
+[`docs/ONLINE_SETUP.md`](docs/ONLINE_SETUP.md).
+
 ## What's here
 
 | Area | Where |
@@ -25,7 +28,7 @@ automatically, so a clean CI or Vercel build needs no extra step.
 | Mushaf page renderer | `components/mushaf/MushafPage.tsx` |
 | 604-page virtual scroll | `components/mushaf/Reader.tsx` |
 | Data model + all writes | `lib/db/repo.ts`, `lib/db/schema.ts` |
-| Category tree, drag and drop | `components/categories/`, `components/dnd/` |
+| Topic tree, drag and drop | `components/categories/`, `components/dnd/` |
 | Arabic search normalisation | `lib/search/normalize.ts` |
 | Corpus build | `scripts/build-corpus.mjs` |
 

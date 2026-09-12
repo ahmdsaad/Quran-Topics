@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import Reader from '@/components/mushaf/Reader';
 import TopBar from '@/components/layout/TopBar';
@@ -14,10 +14,14 @@ import BookmarksPanel from '@/components/BookmarksPanel';
 import SettingsPanel from '@/components/SettingsPanel';
 import Toast from '@/components/Toast';
 import DragLayer from '@/components/dnd/DragLayer';
+import SyncManager from '@/components/auth/SyncManager';
+import AutoUpdate from '@/components/auth/AutoUpdate';
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
+import { syncNow } from '@/lib/supabase/sync';
 import { ensureCorpus, loadMeta } from '@/lib/db/bootstrap';
-import { allMarkers, getReadingState, getSettings } from '@/lib/db/repo';
+import { allMarkers, getReadingState, getSettings, rebuildMarkers } from '@/lib/db/repo';
 import { db } from '@/lib/db/schema';
-import type { Meta, VerseMarker } from '@/lib/types';
+import type { Meta, TranslationLanguage, VerseMarker } from '@/lib/types';
 import { useUI } from '@/lib/store';
 import { normalizeRange } from '@/lib/mushaf/verseRange';
 
@@ -29,6 +33,31 @@ export default function App() {
   const [initialPage, setInitialPage] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1);
+  const [translationLanguage, setTranslationLanguage] = useState<TranslationLanguage>('en');
+  const [categoryArabicFontSize, setCategoryArabicFontSize] = useState(22.5);
+  const [categoryTranslationFontSize, setCategoryTranslationFontSize] = useState(24);
+  const [categoryTitleFontSize, setCategoryTitleFontSize] = useState(14);
+  const [recentSearchFontSize, setRecentSearchFontSize] = useState(11);
+  const [searchHighlight, setSearchHighlight] = useState<{
+    key: string;
+    page: number;
+    arrived: boolean;
+  } | null>(null);
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchJumpToken, setSearchJumpToken] = useState(0);
+  const [mobileSearchReader, setMobileSearchReader] = useState(false);
+  const [topicHighlight, setTopicHighlight] = useState<{ key: string; page: number } | null>(null);
+  const [topicPage, setTopicPage] = useState(1);
+  const [topicJumpToken, setTopicJumpToken] = useState(0);
+  const [mobileTopicReader, setMobileTopicReader] = useState(false);
+  const [qaHighlight, setQaHighlight] = useState<{ key: string; page: number } | null>(null);
+  const [qaPage, setQaPage] = useState(1);
+  const [qaJumpToken, setQaJumpToken] = useState(0);
+  const [mobileQaReader, setMobileQaReader] = useState(false);
+  const [marksHighlight, setMarksHighlight] = useState<{ key: string; page: number } | null>(null);
+  const [marksPage, setMarksPage] = useState(1);
+  const [marksJumpToken, setMarksJumpToken] = useState(0);
+  const [mobileMarksReader, setMobileMarksReader] = useState(false);
   const [dual, setDual] = useState(false);
 
   const {
@@ -38,6 +67,12 @@ export default function App() {
     mobilePane,
     setMobilePane,
     activeVerse,
+    actionAnchor,
+    noteVerse,
+    assignVerses,
+    assignSpace,
+    openCategoryId,
+    openQaCategoryId,
     openVerse,
     selectionAnchor,
     selectionFocus,
@@ -51,14 +86,45 @@ export default function App() {
     (async () => {
       try {
         await ensureCorpus((pct, label) => live && setProgress({ pct, label }));
+        // Reading position is account state. Pull it before choosing the first
+        // page so a newly opened device starts on the newest cloud page rather
+        // than briefly restoring its stale local position.
+        const supabase = getSupabaseBrowserClient();
+        if (supabase) {
+          try {
+            if (live) setProgress({ pct: 1, label: 'Checking your last Quran page…' });
+            const { data } = await supabase.auth.getSession();
+            if (data.session?.user) await syncNow(data.session.user);
+          } catch (syncError) {
+            // Offline-first fallback: opening the reader must still work when
+            // the network is unavailable; SyncManager retries after boot.
+            console.error('[initial reading sync]', syncError);
+          }
+        }
         const [m, rs, st] = await Promise.all([loadMeta(), getReadingState(), getSettings()]);
         if (!live) return;
         setMeta(m);
-        const deep = Number(new URLSearchParams(location.search).get('page'));
-        const page = Number.isFinite(deep) && deep >= 1 && deep <= m.pages ? deep : (rs?.page ?? 1);
+        const bootUrl = new URL(location.href);
+        const deep = Number(bootUrl.searchParams.get('page'));
+        const hasValidDeepPage = Number.isFinite(deep) && deep >= 1 && deep <= m.pages;
+        const page = hasValidDeepPage ? deep : (rs?.page ?? 1);
         setInitialPage(page);
         setCurrentPage(page);
+        // The updater uses `page` as a one-time, synchronous hand-off across a
+        // mobile refresh. Remove it after consuming it so a later launch can
+        // resume from whichever device most recently updated the cloud state.
+        if (hasValidDeepPage) {
+          bootUrl.searchParams.delete('page');
+          history.replaceState(history.state, '', `${bootUrl.pathname}${bootUrl.search}${bootUrl.hash}`);
+        }
         if (st?.pageScale) setScale(st.pageScale);
+        if (st?.translationLanguage) setTranslationLanguage(st.translationLanguage);
+        if (st?.categoryArabicFontSize) setCategoryArabicFontSize(st.categoryArabicFontSize);
+        if (st?.categoryTranslationFontSize) {
+          setCategoryTranslationFontSize(st.categoryTranslationFontSize);
+        }
+        if (st?.categoryTitleFontSize) setCategoryTitleFontSize(st.categoryTitleFontSize);
+        if (st?.recentSearchFontSize) setRecentSearchFontSize(st.recentSearchFontSize);
         if (st?.theme) document.documentElement.dataset.theme = st.theme;
         setPhase('ready');
       } catch (e) {
@@ -72,6 +138,96 @@ export default function App() {
     };
   }, []);
 
+  // Android's system Back action is delivered to an installed PWA as browser
+  // history navigation. Mirror meaningful mobile UI steps into that history so
+  // Back closes a sheet, returns from a Quran reference to its list, closes a
+  // topic, or returns to the previous mode in the same order the user opened it.
+  // Quran scrolling itself is intentionally excluded: it remains reading state,
+  // not browser navigation history.
+  const restoringMobileHistory = useRef(false);
+  const mobileHistoryReady = useRef(false);
+  const mobileSnapshot = useMemo(() => ({
+    pane: mobilePane,
+    searchReader: mobileSearchReader,
+    topicReader: mobileTopicReader,
+    qaReader: mobileQaReader,
+    marksReader: mobileMarksReader,
+    openCategoryId,
+    openQaCategoryId,
+    activeVerse,
+    actionAnchor,
+    noteVerse,
+    assignVerses,
+    assignSpace,
+    selectionAnchor,
+    selectionFocus,
+  }), [
+    mobilePane, mobileSearchReader, mobileTopicReader, mobileQaReader, mobileMarksReader,
+    openCategoryId, openQaCategoryId, activeVerse, actionAnchor, noteVerse,
+    assignVerses, assignSpace, selectionAnchor, selectionFocus,
+  ]);
+  const mobileSnapshotJson = JSON.stringify(mobileSnapshot);
+
+  useEffect(() => {
+    if (phase !== 'ready' || window.matchMedia('(min-width: 1024px)').matches) return;
+
+    const restore = (snapshot: typeof mobileSnapshot) => {
+      restoringMobileHistory.current = JSON.stringify(snapshot) !== mobileSnapshotJson;
+      setMobileSearchReader(snapshot.searchReader);
+      setMobileTopicReader(snapshot.topicReader);
+      setMobileQaReader(snapshot.qaReader);
+      setMobileMarksReader(snapshot.marksReader);
+      useUI.setState({
+        mobilePane: snapshot.pane,
+        openCategoryId: snapshot.openCategoryId,
+        openQaCategoryId: snapshot.openQaCategoryId,
+        activeVerse: snapshot.activeVerse,
+        actionAnchor: snapshot.actionAnchor,
+        noteVerse: snapshot.noteVerse,
+        assignVerses: snapshot.assignVerses,
+        assignSpace: snapshot.assignSpace,
+        selectionAnchor: snapshot.selectionAnchor,
+        selectionFocus: snapshot.selectionFocus,
+      });
+    };
+
+    const onPopState = (event: PopStateEvent) => {
+      const state = event.state as { qcRoot?: boolean; qcNavigation?: boolean; snapshot?: typeof mobileSnapshot } | null;
+      if (state?.qcNavigation && state.snapshot) {
+        restore(state.snapshot);
+        return;
+      }
+      if (state?.qcRoot) {
+        restore(state.snapshot ?? mobileSnapshot);
+        if (window.confirm('Do you really want to close the app?')) {
+          window.removeEventListener('popstate', onPopState);
+          history.back();
+        } else {
+          history.pushState({ qcNavigation: true, snapshot: state.snapshot ?? mobileSnapshot }, '');
+        }
+      }
+    };
+
+    if (!mobileHistoryReady.current) {
+      history.replaceState({ ...history.state, qcRoot: true, snapshot: mobileSnapshot }, '');
+      history.pushState({ qcNavigation: true, snapshot: mobileSnapshot }, '');
+      mobileHistoryReady.current = true;
+    } else if (restoringMobileHistory.current) {
+      restoringMobileHistory.current = false;
+    } else {
+      history.pushState({ qcNavigation: true, snapshot: mobileSnapshot }, '');
+    }
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+    // The serialized value changes only for meaningful mobile navigation state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, mobileSnapshotJson]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--category-title-font-size', `${categoryTitleFontSize}px`);
+  }, [categoryTitleFontSize]);
+
   // ------------------------------------------------------- responsive layout
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 1024px)');
@@ -81,7 +237,36 @@ export default function App() {
     return () => mq.removeEventListener('change', apply);
   }, []);
 
+  // Desktop changes the width of the Quran viewport between modes. Whenever a
+  // reference mode is shown again, explicitly return to its still-selected
+  // ayah instead of relying on a pixel scroll offset from the previous width.
+  useEffect(() => {
+    if (!dual) return;
+    if (mobilePane === 'search' && searchHighlight) {
+      setSearchPage(searchHighlight.page);
+      setSearchJumpToken((token) => token + 1);
+    } else if (mobilePane === 'categories' && topicHighlight) {
+      setTopicPage(topicHighlight.page);
+      setTopicJumpToken((token) => token + 1);
+    } else if (mobilePane === 'qa' && qaHighlight) {
+      setQaPage(qaHighlight.page);
+      setQaJumpToken((token) => token + 1);
+    } else if (mobilePane === 'bookmarks' && marksHighlight) {
+      setMarksPage(marksHighlight.page);
+      setMarksJumpToken((token) => token + 1);
+    }
+  }, [dual, mobilePane, searchHighlight?.key, searchHighlight?.page, topicHighlight?.key, topicHighlight?.page, qaHighlight?.key, qaHighlight?.page, marksHighlight?.key, marksHighlight?.page]);
+
   // ------------------------------------------------------------ verse markers
+  // Rebuild once after an upgrade so older local marker rows gain any newly
+  // derived fields. Do not rebuild inside the live query: that query reruns
+  // whenever a marker changes, and writing the whole marker table from inside
+  // its own observer can create a costly feedback loop on mobile browsers.
+  useEffect(() => {
+    if (phase !== 'ready') return;
+    void rebuildMarkers().catch((error) => console.error('[marker migration]', error));
+  }, [phase]);
+
   const markerRows = useLiveQuery(
     () => (phase === 'ready' ? allMarkers() : Promise.resolve([] as VerseMarker[])),
     [phase],
@@ -191,41 +376,289 @@ export default function App() {
       meta={meta}
       markers={markers}
       selectedVerse={activeVerse}
+      searchedVerse={null}
       range={range}
       onVerseTap={handleVerseTap}
-      initialPage={jumpToken > 0 ? jumpPage : initialPage}
+      onRangeStart={startRange}
+      initialPage={jumpToken > 0 && jumpPage !== currentPage ? jumpPage : currentPage}
       jumpToken={jumpToken}
       scale={scale}
-      onPageChange={setCurrentPage}
+      active={mobilePane === 'reader'}
+      onPageChange={(page) => {
+        if (mobilePane === 'reader') setCurrentPage(page);
+      }}
     />
+  );
+
+  const openSearchPage = (page: number, key: string | null = null) => {
+    setSearchPage(page);
+    setSearchHighlight(key ? { key, page, arrived: true } : null);
+    setSearchJumpToken((token) => token + 1);
+  };
+
+  const searchReaderPane = (
+    <Reader
+      meta={meta}
+      markers={markers}
+      selectedVerse={activeVerse}
+      searchedVerse={searchHighlight?.key ?? null}
+      range={range}
+      onVerseTap={handleVerseTap}
+      onRangeStart={startRange}
+      initialPage={searchHighlight?.page ?? searchPage}
+      jumpToken={searchJumpToken}
+      scale={scale}
+      persistReading={false}
+      active={mobilePane === 'search'}
+      onPageChange={setSearchPage}
+    />
+  );
+
+  const openTopicPage = (page: number, key: string | null = null) => {
+    setTopicPage(page);
+    setTopicHighlight(key ? { key, page } : null);
+    setTopicJumpToken((token) => token + 1);
+  };
+
+  const topicReaderPane = (
+    <Reader
+      meta={meta}
+      markers={markers}
+      selectedVerse={activeVerse}
+      searchedVerse={topicHighlight?.key ?? null}
+      range={range}
+      onVerseTap={handleVerseTap}
+      onRangeStart={startRange}
+      initialPage={topicHighlight?.page ?? topicPage}
+      jumpToken={topicJumpToken}
+      scale={scale}
+      persistReading={false}
+      active={mobilePane === 'categories'}
+      onPageChange={setTopicPage}
+    />
+  );
+
+  const openQaPage = (page: number, key: string | null = null) => {
+    setQaPage(page);
+    setQaHighlight(key ? { key, page } : null);
+    setQaJumpToken((token) => token + 1);
+  };
+
+  const qaReaderPane = (
+    <Reader
+      meta={meta}
+      markers={markers}
+      selectedVerse={activeVerse}
+      searchedVerse={qaHighlight?.key ?? null}
+      range={range}
+      onVerseTap={handleVerseTap}
+      onRangeStart={startRange}
+      initialPage={qaHighlight?.page ?? qaPage}
+      jumpToken={qaJumpToken}
+      scale={scale}
+      persistReading={false}
+      active={mobilePane === 'qa'}
+      onPageChange={setQaPage}
+    />
+  );
+
+  const openMarksPage = (page: number, key: string | null = null) => {
+    setMarksPage(page);
+    setMarksHighlight(key ? { key, page } : null);
+    setMarksJumpToken((token) => token + 1);
+  };
+
+  const marksReaderPane = (
+    <Reader
+      meta={meta}
+      markers={markers}
+      selectedVerse={activeVerse}
+      searchedVerse={marksHighlight?.key ?? null}
+      range={range}
+      onVerseTap={handleVerseTap}
+      onRangeStart={startRange}
+      initialPage={marksHighlight?.page ?? marksPage}
+      jumpToken={marksJumpToken}
+      scale={scale}
+      persistReading={false}
+      active={mobilePane === 'bookmarks'}
+      onPageChange={setMarksPage}
+    />
+  );
+
+  const topicsPane = (
+    <div className="h-full">
+      <div className={!dual && mobileTopicReader ? 'hidden' : 'h-full'}>
+        <CategoriesPane
+          meta={meta}
+          translationLanguage={translationLanguage}
+          arabicFontSize={categoryArabicFontSize}
+          translationFontSize={categoryTranslationFontSize}
+          selectedVerseKey={topicHighlight?.key}
+          onVerseOpen={(verse) => {
+            openTopicPage(verse.page, verse.key);
+            if (!dual) setMobileTopicReader(true);
+          }}
+        />
+      </div>
+      {!dual && mobileTopicReader ? (
+        <div className="flex h-full flex-col">
+          <div className="shrink-0 border-b p-2" style={{ borderColor: 'var(--border)' }}>
+            <button className="btn btn-ghost px-2 text-xs" onClick={() => setMobileTopicReader(false)}>
+              ‹ Topic verses
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">{topicReaderPane}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const qaPane = (
+    <div className="h-full">
+      <div className={!dual && mobileQaReader ? 'hidden' : 'h-full'}>
+        <CategoriesPane
+          space="qa"
+          meta={meta}
+          translationLanguage={translationLanguage}
+          arabicFontSize={categoryArabicFontSize}
+          translationFontSize={categoryTranslationFontSize}
+          selectedVerseKey={qaHighlight?.key}
+          onVerseOpen={(verse) => {
+            openQaPage(verse.page, verse.key);
+            if (!dual) setMobileQaReader(true);
+          }}
+        />
+      </div>
+      {!dual && mobileQaReader ? (
+        <div className="flex h-full flex-col">
+          <div className="shrink-0 border-b p-2" style={{ borderColor: 'var(--border)' }}>
+            <button className="btn btn-ghost px-2 text-xs" onClick={() => setMobileQaReader(false)}>
+              ‹ Q/A verses
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">{qaReaderPane}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const searchPane = (
+    <div className="h-full">
+          <div className={!dual && mobileSearchReader ? 'hidden' : 'h-full'}>
+            <SearchPanel
+              meta={meta}
+              selectedVerseKey={searchHighlight?.key}
+              recentSearchFontSize={recentSearchFontSize}
+              onVerseResult={(verse) => {
+                openSearchPage(verse.page, verse.key);
+                if (!dual) setMobileSearchReader(true);
+              }}
+            />
+          </div>
+          {!dual && mobileSearchReader ? (
+            <div className="flex h-full flex-col">
+              <div className="shrink-0 border-b p-2" style={{ borderColor: 'var(--border)' }}>
+                <button className="btn btn-ghost px-2 text-xs" onClick={() => setMobileSearchReader(false)}>
+                  ‹ Search results
+                </button>
+              </div>
+              <div className="min-h-0 flex-1">{searchReaderPane}</div>
+            </div>
+          ) : null}
+    </div>
+  );
+
+  const marksPane = (
+    <div className="h-full">
+      <div className={!dual && mobileMarksReader ? 'hidden' : 'h-full'}>
+        <BookmarksPanel
+          meta={meta}
+          selectedVerseKey={marksHighlight?.key}
+          onClose={() => setMobilePane('reader')}
+          onVerseOpen={(verse) => {
+            openMarksPage(verse.page, verse.key);
+            if (!dual) setMobileMarksReader(true);
+          }}
+        />
+      </div>
+      {!dual && mobileMarksReader ? (
+        <div className="flex h-full flex-col">
+          <div className="shrink-0 border-b p-2" style={{ borderColor: 'var(--border)' }}>
+            <button className="btn btn-ghost px-2 text-xs" onClick={() => setMobileMarksReader(false)}>
+              ‹ Marks
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">{marksReaderPane}</div>
+        </div>
+      ) : null}
+    </div>
   );
 
   const sidePane = (
     <>
       {mobilePane === 'search' ? (
-        <SearchPanel meta={meta} onClose={() => setMobilePane('reader')} />
+        searchPane
+      ) : mobilePane === 'qa' ? (
+        qaPane
       ) : mobilePane === 'bookmarks' ? (
-        <BookmarksPanel meta={meta} onClose={() => setMobilePane('reader')} />
+        marksPane
       ) : mobilePane === 'settings' ? (
         <SettingsPanel
           scale={scale}
           onScale={setScale}
+          translationLanguage={translationLanguage}
+          onTranslationLanguage={setTranslationLanguage}
+          categoryArabicFontSize={categoryArabicFontSize}
+          onCategoryArabicFontSize={setCategoryArabicFontSize}
+          categoryTranslationFontSize={categoryTranslationFontSize}
+          onCategoryTranslationFontSize={setCategoryTranslationFontSize}
+          categoryTitleFontSize={categoryTitleFontSize}
+          onCategoryTitleFontSize={setCategoryTitleFontSize}
+          recentSearchFontSize={recentSearchFontSize}
+          onRecentSearchFontSize={setRecentSearchFontSize}
           onClose={() => setMobilePane('reader')}
         />
       ) : (
-        <CategoriesPane meta={meta} />
+        topicsPane
       )}
     </>
   );
 
   return (
     <DragLayer meta={meta}>
+      <SyncManager />
+      <AutoUpdate currentPage={currentPage} />
       <div className="flex h-dvh flex-col" style={{ background: 'var(--surface-2)' }}>
         <TopBar
           meta={meta}
-          currentPage={currentPage}
+          currentPage={mobilePane === 'search' && (dual || mobileSearchReader)
+            ? searchPage
+            : mobilePane === 'categories' && (dual || mobileTopicReader)
+              ? topicPage
+              : mobilePane === 'qa' && (dual || mobileQaReader)
+                ? qaPage
+              : mobilePane === 'bookmarks' && (dual || mobileMarksReader)
+                ? marksPage
+              : currentPage}
           dual={dual}
-          onJump={jumpTo}
+          onJump={(page) => {
+            if (mobilePane === 'search') {
+              openSearchPage(page);
+              if (!dual) setMobileSearchReader(true);
+            } else if (mobilePane === 'categories') {
+              openTopicPage(page);
+              if (!dual) setMobileTopicReader(true);
+            } else if (mobilePane === 'qa') {
+              openQaPage(page);
+              if (!dual) setMobileQaReader(true);
+            } else if (mobilePane === 'bookmarks') {
+              openMarksPage(page);
+              if (!dual) setMobileMarksReader(true);
+            } else {
+              jumpTo(page);
+            }
+          }}
           scale={scale}
           onScale={setScale}
         />
@@ -234,22 +667,98 @@ export default function App() {
           {dual ? (
             <>
               <aside
-                className="flex w-[380px] shrink-0 flex-col border-r xl:w-[440px]"
+                className={`${mobilePane === 'reader' ? 'hidden' : 'flex'} w-[60%] shrink-0 flex-col border-r`}
                 style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
               >
-                {sidePane}
+                {/* Keep Search and Topics mounted while switching workspaces so
+                    their query, results, selection, and scroll position survive. */}
+                <div className={mobilePane === 'search' ? 'h-full' : 'hidden'}>{searchPane}</div>
+                <div className={mobilePane === 'categories' ? 'h-full' : 'hidden'}>{topicsPane}</div>
+                <div className={mobilePane === 'qa' ? 'h-full' : 'hidden'}>{qaPane}</div>
+                <div className={mobilePane === 'bookmarks' ? 'h-full' : 'hidden'}>{marksPane}</div>
+                {mobilePane === 'settings' ? (
+                  <SettingsPanel
+                    scale={scale}
+                    onScale={setScale}
+                    translationLanguage={translationLanguage}
+                    onTranslationLanguage={setTranslationLanguage}
+                    categoryArabicFontSize={categoryArabicFontSize}
+                    onCategoryArabicFontSize={setCategoryArabicFontSize}
+                    categoryTranslationFontSize={categoryTranslationFontSize}
+                    onCategoryTranslationFontSize={setCategoryTranslationFontSize}
+                    categoryTitleFontSize={categoryTitleFontSize}
+                    onCategoryTitleFontSize={setCategoryTitleFontSize}
+                    recentSearchFontSize={recentSearchFontSize}
+                    onRecentSearchFontSize={setRecentSearchFontSize}
+                    onClose={() => setMobilePane('reader')}
+                  />
+                ) : null}
               </aside>
-              <main className="min-w-0 flex-1">{readerPane}</main>
+              <main className="relative min-w-0 flex-1 overflow-hidden">
+                {/* Desktop mirrors mobile: each Quran mode remains mounted so
+                    its page, scroll position, and temporary green highlight
+                    survive tab changes. */}
+                <div
+                  className={mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks'
+                    ? 'h-full'
+                    : 'invisible absolute inset-0 h-full pointer-events-none'}
+                >
+                  {readerPane}
+                </div>
+                <div
+                  className={mobilePane === 'search'
+                    ? 'h-full'
+                    : 'invisible absolute inset-0 h-full pointer-events-none'}
+                >
+                  {searchReaderPane}
+                </div>
+                <div
+                  className={mobilePane === 'categories'
+                    ? 'h-full'
+                    : 'invisible absolute inset-0 h-full pointer-events-none'}
+                >
+                  {topicReaderPane}
+                </div>
+                <div
+                  className={mobilePane === 'qa'
+                    ? 'h-full'
+                    : 'invisible absolute inset-0 h-full pointer-events-none'}
+                >
+                  {qaReaderPane}
+                </div>
+                <div
+                  className={mobilePane === 'bookmarks'
+                    ? 'h-full'
+                    : 'invisible absolute inset-0 h-full pointer-events-none'}
+                >
+                  {marksReaderPane}
+                </div>
+              </main>
             </>
           ) : (
-            <main className="min-w-0 flex-1">
-              {mobilePane === 'reader' ? (
-                readerPane
-              ) : (
+            <main className="relative min-w-0 flex-1 overflow-hidden">
+              {/* Read and Search stay mounted as independent workspaces. Hiding
+                  one must not reset the other's query, results, or scroll. */}
+              <div className={mobilePane === 'reader' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
+                {readerPane}
+              </div>
+              <div className={mobilePane === 'search' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
+                {searchPane}
+              </div>
+              <div className={mobilePane === 'categories' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
+                {topicsPane}
+              </div>
+              <div className={mobilePane === 'qa' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
+                {qaPane}
+              </div>
+              <div className={mobilePane === 'bookmarks' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
+                {marksPane}
+              </div>
+              {mobilePane !== 'reader' && mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks' ? (
                 <div className="h-full" style={{ background: 'var(--surface)' }}>
                   {sidePane}
                 </div>
-              )}
+              ) : null}
             </main>
           )}
         </div>
@@ -257,7 +766,7 @@ export default function App() {
         {!dual && <MobileTabs />}
       </div>
 
-      <VerseActionSheet meta={meta} />
+      <VerseActionSheet meta={meta} translationLanguage={translationLanguage} />
       <NoteEditorModal meta={meta} />
       <AssignSheet meta={meta} />
       <SelectionBar meta={meta} />
@@ -270,7 +779,8 @@ function MobileTabs() {
   const { mobilePane, setMobilePane } = useUI();
   const tabs = [
     { id: 'reader', label: 'Read', icon: '☰' },
-    { id: 'categories', label: 'Categories', icon: '▤' },
+    { id: 'categories', label: 'Topics', icon: '▤' },
+    { id: 'qa', label: 'Q/A', icon: '?' },
     { id: 'search', label: 'Search', icon: '⌕' },
     { id: 'bookmarks', label: 'Marks', icon: '⚑' },
     { id: 'settings', label: 'Settings', icon: '⚙' },
@@ -292,6 +802,9 @@ function MobileTabs() {
           className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium"
           style={{
             color: mobilePane === t.id ? 'var(--accent)' : 'var(--ink-soft)',
+            background: mobilePane === t.id ? 'var(--accent-soft)' : 'transparent',
+            boxShadow: mobilePane === t.id ? 'inset 0 3px 0 var(--accent)' : 'none',
+            fontWeight: mobilePane === t.id ? 700 : 500,
           }}
           aria-current={mobilePane === t.id}
         >

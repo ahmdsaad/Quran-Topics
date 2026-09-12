@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useDraggable } from '@dnd-kit/core';
-import type { Bookmark, Category, Meta, Verse } from '@/lib/types';
+import type { Bookmark, Category, Meta, TranslationLanguage, Verse } from '@/lib/types';
 import { BOOKMARK_COLORS } from '@/lib/types';
 import {
   addBookmark,
@@ -16,9 +16,25 @@ import {
 } from '@/lib/db/repo';
 import { useUI } from '@/lib/store';
 
-export default function VerseActionSheet({ meta }: { meta: Meta }) {
-  const { activeVerse, actionAnchor, closeVerse, openNote, openAssign, showToast, startRange } =
-    useUI();
+export default function VerseActionSheet({
+  meta,
+  translationLanguage,
+}: {
+  meta: Meta;
+  translationLanguage: TranslationLanguage;
+}) {
+  const {
+    activeVerse,
+    actionAnchor,
+    closeVerse,
+    openNote,
+    openAssign,
+    showToast,
+    startRange,
+    setOpenCategory,
+    setOpenQaCategory,
+    setMobilePane,
+  } = useUI();
   const [verse, setVerse] = useState<Verse | null>(null);
 
   useEffect(() => {
@@ -44,7 +60,7 @@ export default function VerseActionSheet({ meta }: { meta: Meta }) {
     [activeVerse],
     [] as string[]
   );
-  const cats = useLiveQuery(() => listCategories(), [], [] as Category[]);
+  const cats = useLiveQuery(() => listCategories('all'), [], [] as Category[]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeVerse();
@@ -56,6 +72,8 @@ export default function VerseActionSheet({ meta }: { meta: Meta }) {
 
   const surah = meta.surahs.find((s) => s.number === verse.surah);
   const assigned = (cats ?? []).filter((c) => (catIds ?? []).includes(c.id));
+  const assignedTopics = assigned.filter((c) => c.description !== '__quran_categories_qa__');
+  const assignedQa = assigned.filter((c) => c.description === '__quran_categories_qa__');
   const bookmarked = (bookmarks ?? []).length > 0;
 
   const copy = async () => {
@@ -73,13 +91,22 @@ export default function VerseActionSheet({ meta }: { meta: Meta }) {
     <>
       <div className="fixed inset-0 z-[60]" onClick={closeVerse} />
       <div
-        className="panel fixed z-[61] w-[min(26rem,calc(100vw-1.5rem))] overflow-hidden"
+        className="panel fixed z-[61] max-h-[80dvh] w-[min(26rem,calc(100vw-1.5rem))] overflow-y-auto overscroll-contain lg:max-h-[90dvh]"
         style={anchorStyle(actionAnchor)}
         role="dialog"
         aria-label={`Actions for verse ${verse.key}`}
       >
+        <button
+          className="btn btn-ghost absolute right-1.5 top-1.5 z-10 h-11 min-h-0 w-11 rounded-full p-0 text-2xl leading-none"
+          style={{ background: 'var(--surface)' }}
+          onClick={closeVerse}
+          aria-label="Close verse popup"
+          title="Close"
+        >
+          ×
+        </button>
         {/* Identification: chapter, juz and verse, per the requirements */}
-        <div className="border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+        <div className="border-b px-4 py-3 pr-14" style={{ borderColor: 'var(--border)' }}>
           <div className="flex items-baseline justify-between gap-3">
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">
@@ -104,19 +131,61 @@ export default function VerseActionSheet({ meta }: { meta: Meta }) {
           >
             {verse.text}
           </p>
+          <p
+            dir="ltr"
+            className="verse-popup-translation mt-2 border-t pt-2 text-left leading-normal"
+            style={{ borderColor: 'var(--border)', color: 'var(--ink-soft)' }}
+          >
+            {verse.translations?.[translationLanguage]}
+          </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-1 p-2">
-          <Action onClick={() => openNote(verse.key)}>
-            {note && note.deletedAt === null && note.contentText.trim() ? '✎ Edit note' : '✎ Add note'}
+        {assigned.length ? (
+          <div className="border-b px-4 py-2.5" style={{ borderColor: 'var(--border)' }}>
+            <p
+              className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide"
+              style={{ color: 'var(--ink-soft)' }}
+            >
+              Added to {assigned.length === 1 ? 'collection' : `${assigned.length} collections`}
+            </p>
+            <div className="space-y-1">
+              {assigned.map((category) => (
+                <button
+                  key={category.id}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs"
+                  style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+                  onClick={() => {
+                    const qa = category.description === '__quran_categories_qa__';
+                    (qa ? setOpenQaCategory : setOpenCategory)(category.id);
+                    setMobilePane(qa ? 'qa' : 'categories');
+                    closeVerse();
+                  }}
+                  title="Open topic"
+                >
+                  <span className="shrink-0">▤</span>
+                  <span dir="auto" className="min-w-0 flex-1 truncate">
+                    {categoryPath(category, cats ?? [])}
+                  </span>
+                  <span aria-hidden>›</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-3 gap-1 p-2">
+          <Action onClick={() => openAssign(verse.key, 'topics')}>
+            ▤ Topic{assignedTopics.length ? ` (${assignedTopics.length})` : ''}
           </Action>
-          <Action onClick={() => openAssign(verse.key)}>
-            ▤ Categories{assigned.length ? ` (${assigned.length})` : ''}
-          </Action>
-          <Action onClick={copy}>⧉ Copy verse</Action>
           {/* The touchscreen equivalent of shift-click: mark this verse as the
               start, then the next verse tapped closes the range. */}
-          <Action onClick={() => startRange(verse.key)}>⇥ Select range from here</Action>
+          <Action onClick={() => startRange(verse.key)}>⇥ Range to</Action>
+          <Action onClick={() => openAssign(verse.key, 'qa')}>
+            ? Q/A{assignedQa.length ? ` (${assignedQa.length})` : ''}
+          </Action>
+          <Action onClick={() => openNote(verse.key)}>
+            {note && note.deletedAt === null && note.contentText.trim() ? '✎ Edit note' : '✎ Note'}
+          </Action>
           <Action
             onClick={async () => {
               if (bookmarked) {
@@ -131,48 +200,28 @@ export default function VerseActionSheet({ meta }: { meta: Meta }) {
           >
             {bookmarked ? '⚑ Remove bookmark' : '⚑ Bookmark'}
           </Action>
+          <Action onClick={copy}>⧉ Copy</Action>
         </div>
-
-        {!bookmarked ? (
-          <div className="flex items-center gap-2 px-4 pb-3">
-            <span className="text-[11px]" style={{ color: 'var(--ink-soft)' }}>
-              Colour
-            </span>
-            {BOOKMARK_COLORS.map((c) => (
-              <button
-                key={c.value}
-                title={c.name}
-                aria-label={`Bookmark ${c.name}`}
-                className="h-5 w-5 rounded-full border"
-                style={{ background: c.value, borderColor: 'var(--border)' }}
-                onClick={async () => {
-                  await addBookmark(verse.key, verse.id, c.value);
-                  showToast(`Bookmarked in ${c.name.toLowerCase()}`);
-                  closeVerse();
-                }}
-              />
-            ))}
-          </div>
-        ) : null}
-
-        {assigned.length ? (
-          <div className="flex flex-wrap gap-1 border-t px-4 py-2" style={{ borderColor: 'var(--border)' }}>
-            {assigned.map((c) => (
-              <span
-                key={c.id}
-                className="rounded-full px-2 py-0.5 text-[11px]"
-                style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
-              >
-                {c.name}
-              </span>
-            ))}
-          </div>
-        ) : null}
 
         <DragGrip verseKey={verse.key} verseId={verse.id} />
       </div>
     </>
   );
+}
+
+function categoryPath(category: Category, categories: Category[]): string {
+  const byId = new Map(categories.map((item) => [item.id, item]));
+  const names = [category.name];
+  const visited = new Set([category.id]);
+  let parentId = category.parentId;
+  while (parentId && !visited.has(parentId)) {
+    visited.add(parentId);
+    const parent = byId.get(parentId);
+    if (!parent) break;
+    names.unshift(parent.name);
+    parentId = parent.parentId;
+  }
+  return names.join(' › ');
 }
 
 /**
@@ -193,7 +242,7 @@ function DragGrip({ verseKey, verseId }: { verseKey: string; verseId: number }) 
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className="flex cursor-grab items-center justify-center gap-2 border-t py-2.5 text-[11px] active:cursor-grabbing"
+      className="verse-popup-drag-grip flex cursor-grab items-center justify-center gap-2 border-t py-2.5 text-[11px] active:cursor-grabbing"
       style={{
         borderColor: 'var(--border)',
         color: 'var(--ink-soft)',
@@ -201,9 +250,10 @@ function DragGrip({ verseKey, verseId }: { verseKey: string; verseId: number }) 
         opacity: isDragging ? 0.4 : 1,
         touchAction: 'none',
       }}
+      title="Drag into a topic"
+      aria-label="Drag verse into a topic"
     >
       <span style={{ letterSpacing: '0.2em' }}>⠿</span>
-      Press and hold, then drag into a category
     </div>
   );
 }
@@ -222,7 +272,5 @@ function anchorStyle(anchor: { x: number; y: number } | null): React.CSSProperti
   }
   const w = Math.min(416, window.innerWidth - 24);
   const left = Math.min(Math.max(12, anchor.x - w / 2), window.innerWidth - w - 12);
-  const spaceBelow = window.innerHeight - anchor.y;
-  const top = spaceBelow > 380 ? anchor.y + 8 : Math.max(12, anchor.y - 380);
-  return { left, top };
+  return { left, top: '50%', transform: 'translateY(-50%)' };
 }

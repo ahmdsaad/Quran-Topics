@@ -1,8 +1,9 @@
 'use client';
 
 import { create } from 'zustand';
+import type { CategorySpace } from '@/lib/types';
 
-type Pane = 'reader' | 'categories' | 'search' | 'bookmarks' | 'settings';
+type Pane = 'reader' | 'categories' | 'qa' | 'search' | 'bookmarks' | 'settings';
 
 interface UIState {
   /** Verse the action sheet is open for. */
@@ -18,7 +19,8 @@ interface UIState {
 
   /** Verses being assigned to categories — one, or a whole selected range. */
   assignVerses: string[];
-  openAssign: (keys: string | string[]) => void;
+  assignSpace: CategorySpace;
+  openAssign: (keys: string | string[], space?: CategorySpace) => void;
   closeAssign: () => void;
 
   /**
@@ -44,6 +46,8 @@ interface UIState {
   /** Category open in the left pane, null = the tree. */
   openCategoryId: string | null;
   setOpenCategory: (id: string | null) => void;
+  openQaCategoryId: string | null;
+  setOpenQaCategory: (id: string | null) => void;
 
   sidebarOpen: boolean;
   setSidebarOpen: (v: boolean) => void;
@@ -68,9 +72,11 @@ export const useUI = create<UIState>((set, get) => ({
   closeNote: () => set({ noteVerse: null }),
 
   assignVerses: [],
-  openAssign: (keys) =>
+  assignSpace: 'topics',
+  openAssign: (keys, space = 'topics') =>
     set({
       assignVerses: typeof keys === 'string' ? [keys] : keys,
+      assignSpace: space,
       activeVerse: null,
       actionAnchor: null,
     }),
@@ -88,6 +94,8 @@ export const useUI = create<UIState>((set, get) => ({
 
   openCategoryId: null,
   setOpenCategory: (id) => set({ openCategoryId: id }),
+  openQaCategoryId: null,
+  setOpenQaCategory: (id) => set({ openQaCategoryId: id }),
 
   sidebarOpen: true,
   setSidebarOpen: (v) => set({ sidebarOpen: v }),

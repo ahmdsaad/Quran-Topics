@@ -13,6 +13,8 @@ import {
 } from '@/lib/db/repo';
 import { useUI } from '@/lib/store';
 import { rangeLabel } from '@/lib/mushaf/verseRange';
+import { categoryTitles } from '@/lib/categories/titles';
+import CategoryTitle from '@/components/categories/CategoryTitle';
 
 /** Flattens the category tree to rows with a depth, preserving sibling order. */
 export function flattenTree(cats: Category[], parentId: string | null = null, depth = 0):
@@ -23,15 +25,18 @@ export function flattenTree(cats: Category[], parentId: string | null = null, de
 }
 
 export default function AssignSheet({ meta }: { meta: Meta }) {
-  const { assignVerses, closeAssign, showToast, clearSelection } = useUI();
+  const { assignVerses, assignSpace, closeAssign, showToast, clearSelection } = useUI();
   const [verses, setVerses] = useState<Verse[]>([]);
   const [q, setQ] = useState('');
-  const [newName, setNewName] = useState('');
+  const [newArabic, setNewArabic] = useState('');
+  const [newEnglish, setNewEnglish] = useState('');
+  const [existingSelectionChanged, setExistingSelectionChanged] = useState(false);
 
   const keys = assignVerses;
   const keySig = keys.join(',');
 
-  const cats = useLiveQuery(() => listCategories(), [], [] as Category[]);
+  const cats = useLiveQuery(() => listCategories(assignSpace), [assignSpace], [] as Category[]);
+  const collectionLabel = assignSpace === 'qa' ? 'Q/A' : 'topics';
 
   // How many of the selected verses each category already holds. A count rather
   // than a boolean: with a range selected, a category can hold some of it, and
@@ -49,7 +54,9 @@ export default function AssignSheet({ meta }: { meta: Meta }) {
     }
     let live = true;
     setQ('');
-    setNewName('');
+    setNewArabic('');
+    setNewEnglish('');
+    setExistingSelectionChanged(false);
     getVersesByKeys(keys).then((v) => live && setVerses(v));
     return () => {
       live = false;
@@ -67,8 +74,12 @@ export default function AssignSheet({ meta }: { meta: Meta }) {
     const flat = flattenTree(cats ?? []);
     if (!q.trim()) return flat;
     const needle = q.toLowerCase();
-    return flat.filter((r) => r.cat.name.toLowerCase().includes(needle));
-  }, [cats, q]);
+    return flat.filter((r) => {
+      const titles = categoryTitles(r.cat);
+      const searchableTitle = assignSpace === 'qa' ? titles.arabic : titles.combined;
+      return searchableTitle.toLowerCase().includes(needle);
+    });
+  }, [assignSpace, cats, q]);
 
   if (!keys.length) return null;
 
@@ -86,21 +97,28 @@ export default function AssignSheet({ meta }: { meta: Meta }) {
     const have = counts?.get(cat.id) ?? 0;
     if (have === keys.length) {
       const n = await removeVersesFromCategory(cat.id, keys);
-      showToast(n === 1 ? 'Removed from category' : `Removed ${n} verses`);
+    showToast(n === 1 ? 'Removed from topic' : `Removed ${n} verses`);
     } else {
       // Partly-filed selection fills the rest rather than toggling off, so a
       // half-checked row always moves towards "all of it is in here".
       const n = await addVersesToCategory(cat.id, payload());
-      showToast(n === 1 ? `Added to “${cat.name}”` : `Added ${n} verses to “${cat.name}”`);
+      const titles = categoryTitles(cat);
+      const title = assignSpace === 'qa' ? (titles.arabic || cat.name) : titles.combined;
+      showToast(n === 1 ? `Added to “${title}”` : `Added ${n} verses to “${title}”`);
     }
+    setExistingSelectionChanged(true);
   };
 
   const addNew = async () => {
-    if (!newName.trim() || !verses.length) return;
-    const cat = await createCategory(newName.trim());
+    if ((assignSpace === 'qa' ? !newArabic.trim() : (!newArabic.trim() && !newEnglish.trim())) || !verses.length) return;
+    const cat = await createCategory(newArabic, null, null, newEnglish, assignSpace);
     const n = await addVersesToCategory(cat.id, payload());
-    setNewName('');
-    showToast(n === 1 ? `Added to “${cat.name}”` : `Added ${n} verses to “${cat.name}”`);
+    setNewArabic('');
+    setNewEnglish('');
+    setExistingSelectionChanged(true);
+    const titles = categoryTitles(cat);
+    const title = assignSpace === 'qa' ? (titles.arabic || cat.name) : titles.combined;
+    showToast(n === 1 ? `Added to “${title}”` : `Added ${n} verses to “${title}”`);
   };
 
   const done = () => {
@@ -108,29 +126,30 @@ export default function AssignSheet({ meta }: { meta: Meta }) {
     if (many) clearSelection();
   };
 
+  const hasNewTitle = assignSpace === 'qa'
+    ? Boolean(newArabic.trim())
+    : Boolean(newArabic.trim() || newEnglish.trim());
+
   return (
     <div className="fixed inset-0 z-[72] flex items-end justify-center sm:items-center sm:p-6">
       <div className="absolute inset-0" style={{ background: 'rgb(0 0 0 / 0.4)' }} onClick={done} />
       <div className="panel relative flex max-h-[85dvh] w-full max-w-md flex-col overflow-hidden rounded-b-none sm:rounded-b-[10px]">
         <header className="shrink-0 border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
             <div className="min-w-0">
               <h2 className="text-sm font-semibold">
-                {many ? `Add ${keys.length} verses to categories` : 'Add to categories'}
+                {many ? `Add ${keys.length} verses to ${collectionLabel}` : `Add to ${collectionLabel}`}
               </h2>
               <p className="truncate text-[11px]" style={{ color: 'var(--ink-soft)' }}>
                 {subtitle}
               </p>
             </div>
-            <button className="btn btn-ghost px-2 py-1 text-xs" onClick={done}>
-              Done
-            </button>
           </div>
           {(cats ?? []).length > 6 ? (
             <input
               className="field mt-2"
               dir="auto"
-              placeholder="Filter categories…"
+              placeholder={`Filter ${collectionLabel}…`}
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
@@ -161,13 +180,7 @@ export default function AssignSheet({ meta }: { meta: Meta }) {
                   >
                     {all ? '✓' : some ? '–' : ''}
                   </span>
-                  {cat.color ? (
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ background: cat.color }}
-                    />
-                  ) : null}
-                  <span dir="auto" className="min-w-0 flex-1 truncate text-sm">{cat.name}</span>
+                  <span className="min-w-0 flex-1 text-sm"><CategoryTitle category={cat} arabicOnly={assignSpace === 'qa'} /></span>
                   {some ? (
                     <span className="shrink-0 text-[11px]" style={{ color: 'var(--ink-soft)' }}>
                       {have} of {keys.length}
@@ -179,8 +192,8 @@ export default function AssignSheet({ meta }: { meta: Meta }) {
           ) : (
             <p className="p-6 text-center text-sm" style={{ color: 'var(--ink-soft)' }}>
               {(cats ?? []).length
-                ? `No category matches “${q}”.`
-                : 'No categories yet. Create your first one below.'}
+                ? `No ${collectionLabel} item matches “${q}”.`
+                : `No ${collectionLabel} items yet. Create your first one below.`}
             </p>
           )}
         </div>
@@ -189,16 +202,20 @@ export default function AssignSheet({ meta }: { meta: Meta }) {
           className="flex shrink-0 gap-2 border-t px-4 py-3"
           style={{ borderColor: 'var(--border)', paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
         >
-          <input
-            className="field"
-            dir="auto"
-            placeholder="New category name…"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addNew()}
-          />
-          <button className="btn btn-primary shrink-0" onClick={addNew} disabled={!newName.trim()}>
-            Create
+          <div className={`grid min-w-0 flex-1 gap-2 ${assignSpace === 'qa' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            {assignSpace !== 'qa' ? (
+              <input className="field" dir="ltr" lang="en" placeholder="English title…" value={newEnglish}
+                onChange={(e) => setNewEnglish(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addNew()} />
+            ) : null}
+            <input className="field text-right" dir="rtl" lang="ar" placeholder="العنوان بالعربية…" value={newArabic}
+              onChange={(e) => setNewArabic(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addNew()} />
+          </div>
+          <button
+            className="btn btn-primary shrink-0"
+            onClick={() => { if (hasNewTitle) void addNew(); else done(); }}
+            disabled={!hasNewTitle && !existingSelectionChanged}
+          >
+            {hasNewTitle ? 'Create' : existingSelectionChanged ? 'Done' : 'Create'}
           </button>
         </footer>
       </div>
