@@ -17,6 +17,91 @@ let indexBuilding: Promise<void> | null = null;
 const SEARCH_HISTORY_KEY = 'quran-search-history';
 const SEARCH_HISTORY_LIMIT = 12;
 
+type TextOffset = { start: number; end: number };
+
+function normalizedTextWithOffsets(text: string) {
+  let normalized = '';
+  const offsets: TextOffset[] = [];
+
+  for (let index = 0; index < text.length;) {
+    const character = String.fromCodePoint(text.codePointAt(index)!);
+    const end = index + character.length;
+    if (/\s/u.test(character)) {
+      if (normalized && !normalized.endsWith(' ')) {
+        normalized += ' ';
+        offsets.push({ start: index, end });
+      }
+      index = end;
+      continue;
+    }
+    const value = normalizeArabic(character);
+
+    if (!value && offsets.length) {
+      offsets[offsets.length - 1].end = end;
+    }
+    for (const normalizedCharacter of value) {
+      normalized += normalizedCharacter;
+      offsets.push({ start: index, end });
+    }
+    index = end;
+  }
+
+  return { normalized, offsets };
+}
+
+function HighlightedSearchText({ text, query }: { text: string; query: string }) {
+  const needles = normalizeArabic(query).split(' ').filter(Boolean);
+  if (!needles.length) return text;
+
+  const { normalized, offsets } = normalizedTextWithOffsets(text);
+  const ranges: TextOffset[] = [];
+  needles.forEach((needle) => {
+    let searchFrom = 0;
+    while (searchFrom < normalized.length) {
+      const matchStart = normalized.indexOf(needle, searchFrom);
+      if (matchStart === -1) break;
+      const matchEnd = matchStart + needle.length;
+      const first = offsets[matchStart];
+      const last = offsets[matchEnd - 1];
+      if (first && last) ranges.push({ start: first.start, end: last.end });
+      searchFrom = matchEnd;
+    }
+  });
+
+  if (!ranges.length) return text;
+
+  const mergedRanges = ranges
+    .sort((a, b) => a.start - b.start || a.end - b.end)
+    .reduce<TextOffset[]>((merged, range) => {
+      const previous = merged.at(-1);
+      if (previous && range.start <= previous.end) {
+        previous.end = Math.max(previous.end, range.end);
+      } else {
+        merged.push({ ...range });
+      }
+      return merged;
+    }, []);
+
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  mergedRanges.forEach((range, index) => {
+    if (range.start > cursor) parts.push(text.slice(cursor, range.start));
+    parts.push(
+      <mark
+        key={`${range.start}-${range.end}-${index}`}
+        className="rounded-[0.2em] px-[0.06em] text-inherit"
+        style={{ background: '#fff0a8' }}
+      >
+        {text.slice(range.start, range.end)}
+      </mark>,
+    );
+    cursor = range.end;
+  });
+  if (cursor < text.length) parts.push(text.slice(cursor));
+
+  return parts;
+}
+
 /**
  * Builds the Quran index once per session.
  *
@@ -291,7 +376,7 @@ export default function SearchPanel({
                     className="mt-0.5 line-clamp-3 block text-[15px] leading-loose"
                     style={{ fontFamily: "'Scheherazade New', serif" }}
                   >
-                    {h.verse.text}
+                    <HighlightedSearchText text={h.verse.text} query={q} />
                   </span>
                 </button>
               );
