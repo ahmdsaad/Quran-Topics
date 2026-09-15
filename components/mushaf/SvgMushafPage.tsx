@@ -12,6 +12,7 @@ interface Props {
   markers: Map<string, VerseMarker>;
   selectedVerse: string | null;
   searchedVerse: string | null;
+  recitingWord?: { verseKey: string; wordIndex: number } | null;
   range: { from: string; to: string } | null;
   onVerseTap: (verseKey: string, el: HTMLElement, additive: boolean) => void;
   onRangeStart: (verseKey: string) => void;
@@ -22,7 +23,7 @@ interface Props {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export default function SvgMushafPage({
-  page, meta, markers, selectedVerse, searchedVerse, range, onVerseTap, onRangeStart, compactMobile = false, active = true,
+  page, meta, markers, selectedVerse, searchedVerse, recitingWord = null, range, onVerseTap, onRangeStart, compactMobile = false, active = true,
 }: Props) {
   const [markup, setMarkup] = useState('');
   const [error, setError] = useState(false);
@@ -76,7 +77,8 @@ export default function SvgMushafPage({
     let live = true;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const controller = new AbortController();
-    const source = `/mushaf-svg/${String(page).padStart(3, '0')}.svg`;
+    const localSource = `/mushaf-svg/${String(page).padStart(3, '0')}.svg`;
+    const fallbackSource = `/api/mushaf-page/${page}`;
     setMarkup('');
     setError(false);
 
@@ -88,10 +90,19 @@ export default function SvgMushafPage({
       // never mix two Mushaf editions in the same reading stream.
       for (let attempt = 0; attempt < 5 && live; attempt += 1) {
         try {
-          const response = await fetch(source, {
+          let response = await fetch(localSource, {
             cache: attempt === 0 ? 'default' : 'reload',
             signal: controller.signal,
           });
+          // The SVG collection is intentionally not committed because it is
+          // hundreds of megabytes. A clean cloud build therefore falls back
+          // to the corresponding semantic page published by QUL.
+          if (!response.ok) {
+            response = await fetch(fallbackSource, {
+              cache: attempt === 0 ? 'default' : 'reload',
+              signal: controller.signal,
+            });
+          }
           if (!response.ok) throw new Error(`SVG page ${page}: ${response.status}`);
           const svg = await response.text();
           if (!svg.includes('id="md-page-inner"')) throw new Error(`SVG page ${page}: invalid document`);
@@ -270,6 +281,23 @@ export default function SvgMushafPage({
       segments.set(segmentKey, current);
     }
 
+    if (recitingWord) {
+      for (const group of groups) {
+        const key = `${group.dataset.surah}:${group.dataset.aya}`;
+        const wordIndex = Number(group.dataset.wordIndexInAyah);
+        if (key !== recitingWord.verseKey || wordIndex !== recitingWord.wordIndex) continue;
+        const box = group.getBBox();
+        const wordHighlight = document.createElementNS(SVG_NS, 'rect');
+        wordHighlight.setAttribute('x', String(box.x - 1.8));
+        wordHighlight.setAttribute('y', String(box.y - 1.5));
+        wordHighlight.setAttribute('width', String(box.width + 3.6));
+        wordHighlight.setAttribute('height', String(box.height + 3));
+        wordHighlight.setAttribute('rx', '2');
+        wordHighlight.setAttribute('class', 'svg-reciting-word');
+        layer.appendChild(wordHighlight);
+      }
+    }
+
     for (const segment of segments.values()) {
       const left = Math.min(...segment.boxes.map((box) => box.x));
       const top = Math.min(...segment.boxes.map((box) => box.y));
@@ -344,7 +372,7 @@ export default function SvgMushafPage({
     }
     pageInner.insertBefore(layer, pageInner.firstChild);
     pageInner.appendChild(hitLayer);
-  }, [markup, markers, hoverKey, isSelected, categoryToneByVerse, compactMobile, searchedVerse, active]);
+  }, [markup, markers, hoverKey, isSelected, categoryToneByVerse, compactMobile, searchedVerse, recitingWord, active]);
 
   const verseTargetAt = (target: EventTarget | null) =>
     (target as Element | null)?.closest<SVGElement>('[data-verse-key]') ?? null;

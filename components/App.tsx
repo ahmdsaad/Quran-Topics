@@ -12,6 +12,7 @@ import SelectionBar from '@/components/verse/SelectionBar';
 import SearchPanel from '@/components/search/SearchPanel';
 import BookmarksPanel from '@/components/BookmarksPanel';
 import SettingsPanel from '@/components/SettingsPanel';
+import RecitePanel, { type RecitationPosition } from '@/components/recite/RecitePanel';
 import Toast from '@/components/Toast';
 import DragLayer from '@/components/dnd/DragLayer';
 import SyncManager from '@/components/auth/SyncManager';
@@ -58,6 +59,10 @@ export default function App() {
   const [marksPage, setMarksPage] = useState(1);
   const [marksJumpToken, setMarksJumpToken] = useState(0);
   const [mobileMarksReader, setMobileMarksReader] = useState(false);
+  const [recitePage, setRecitePage] = useState(1);
+  const [reciteJumpToken, setReciteJumpToken] = useState(0);
+  const [recitationPosition, setRecitationPosition] = useState<RecitationPosition | null>(null);
+  const recitePageRef = useRef(1);
   const [dual, setDual] = useState(false);
 
   const {
@@ -110,6 +115,8 @@ export default function App() {
         const page = hasValidDeepPage ? deep : (rs?.page ?? 1);
         setInitialPage(page);
         setCurrentPage(page);
+        setRecitePage(page);
+        recitePageRef.current = page;
         // The updater uses `page` as a one-time, synchronous hand-off across a
         // mobile refresh. Remove it after consuming it so a later launch can
         // resume from whichever device most recently updated the cloud state.
@@ -486,6 +493,67 @@ export default function App() {
     />
   );
 
+  const openRecitePage = (page: number) => {
+    recitePageRef.current = page;
+    setRecitePage(page);
+    setReciteJumpToken((token) => token + 1);
+  };
+
+  const reciteReaderPane = (
+    <Reader
+      meta={meta}
+      markers={markers}
+      selectedVerse={null}
+      searchedVerse={null}
+      recitingWord={recitationPosition
+        ? { verseKey: recitationPosition.verseKey, wordIndex: recitationPosition.wordIndex }
+        : null}
+      range={null}
+      onVerseTap={handleVerseTap}
+      onRangeStart={startRange}
+      initialPage={recitePage}
+      jumpToken={reciteJumpToken}
+      scale={scale}
+      persistReading={false}
+      active={mobilePane === 'recite'}
+      onPageChange={(page) => {
+        recitePageRef.current = page;
+        setRecitePage(page);
+      }}
+    />
+  );
+
+  const handleRecitationPosition = (position: RecitationPosition) => {
+    setRecitationPosition(position);
+    if (position.page !== recitePageRef.current) openRecitePage(position.page);
+  };
+
+  const reciteControls = (
+    <RecitePanel
+      meta={meta}
+      active={mobilePane === 'recite'}
+      onPosition={handleRecitationPosition}
+      onReset={() => setRecitationPosition(null)}
+    />
+  );
+
+  const mobileRecitePane = (
+    <div className="relative h-full">
+      {reciteReaderPane}
+      <div className="pointer-events-none absolute inset-x-3 bottom-3 z-30">
+        <div className="pointer-events-auto">
+          <RecitePanel
+            meta={meta}
+            compact
+            active={mobilePane === 'recite'}
+            onPosition={handleRecitationPosition}
+            onReset={() => setRecitationPosition(null)}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   const topicsPane = (
     <div className="h-full">
       <div className={!dual && mobileTopicReader ? 'hidden' : 'h-full'}>
@@ -603,6 +671,8 @@ export default function App() {
         qaPane
       ) : mobilePane === 'bookmarks' ? (
         marksPane
+      ) : mobilePane === 'recite' ? (
+        reciteControls
       ) : mobilePane === 'settings' ? (
         <SettingsPanel
           scale={scale}
@@ -640,6 +710,8 @@ export default function App() {
                 ? qaPage
               : mobilePane === 'bookmarks' && (dual || mobileMarksReader)
                 ? marksPage
+              : mobilePane === 'recite'
+                ? recitePage
               : currentPage}
           dual={dual}
           onJump={(page) => {
@@ -655,6 +727,9 @@ export default function App() {
             } else if (mobilePane === 'bookmarks') {
               openMarksPage(page);
               if (!dual) setMobileMarksReader(true);
+            } else if (mobilePane === 'recite') {
+              setRecitationPosition(null);
+              openRecitePage(page);
             } else {
               jumpTo(page);
             }
@@ -676,6 +751,7 @@ export default function App() {
                 <div className={mobilePane === 'categories' ? 'h-full' : 'hidden'}>{topicsPane}</div>
                 <div className={mobilePane === 'qa' ? 'h-full' : 'hidden'}>{qaPane}</div>
                 <div className={mobilePane === 'bookmarks' ? 'h-full' : 'hidden'}>{marksPane}</div>
+                <div className={mobilePane === 'recite' ? 'h-full' : 'hidden'}>{reciteControls}</div>
                 {mobilePane === 'settings' ? (
                   <SettingsPanel
                     scale={scale}
@@ -699,7 +775,7 @@ export default function App() {
                     its page, scroll position, and temporary green highlight
                     survive tab changes. */}
                 <div
-                  className={mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks'
+                  className={mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks' && mobilePane !== 'recite'
                     ? 'h-full'
                     : 'invisible absolute inset-0 h-full pointer-events-none'}
                 >
@@ -733,6 +809,13 @@ export default function App() {
                 >
                   {marksReaderPane}
                 </div>
+                <div
+                  className={mobilePane === 'recite'
+                    ? 'h-full'
+                    : 'invisible absolute inset-0 h-full pointer-events-none'}
+                >
+                  {reciteReaderPane}
+                </div>
               </main>
             </>
           ) : (
@@ -754,7 +837,10 @@ export default function App() {
               <div className={mobilePane === 'bookmarks' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
                 {marksPane}
               </div>
-              {mobilePane !== 'reader' && mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks' ? (
+              <div className={mobilePane === 'recite' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
+                {mobileRecitePane}
+              </div>
+              {mobilePane !== 'reader' && mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks' && mobilePane !== 'recite' ? (
                 <div className="h-full" style={{ background: 'var(--surface)' }}>
                   {sidePane}
                 </div>
@@ -781,6 +867,7 @@ function MobileTabs() {
     { id: 'reader', label: 'Read', icon: '☰' },
     { id: 'categories', label: 'Topics', icon: '▤' },
     { id: 'qa', label: 'Q/A', icon: '?' },
+    { id: 'recite', label: 'Recite', icon: '◉' },
     { id: 'search', label: 'Search', icon: '⌕' },
     { id: 'bookmarks', label: 'Marks', icon: '⚑' },
     { id: 'settings', label: 'Settings', icon: '⚙' },

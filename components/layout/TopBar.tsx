@@ -80,6 +80,9 @@ export default function TopBar({
             <TabBtn active={mobilePane === 'qa'} onClick={() => setMobilePane('qa')}>
               Q/A
             </TabBtn>
+            <TabBtn active={mobilePane === 'recite'} onClick={() => setMobilePane('recite')}>
+              Recite
+            </TabBtn>
             <TabBtn active={mobilePane === 'search'} onClick={() => setMobilePane('search')}>
               Search
             </TabBtn>
