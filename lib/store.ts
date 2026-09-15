@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import type { CategorySpace } from '@/lib/types';
 
-type Pane = 'reader' | 'categories' | 'qa' | 'recite' | 'search' | 'bookmarks' | 'settings';
+type Pane = 'reader' | 'categories' | 'qa' | 'search' | 'bookmarks' | 'settings';
 
 interface UIState {
   /** Verse the action sheet is open for. */

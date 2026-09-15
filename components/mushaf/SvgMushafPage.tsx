@@ -12,7 +12,7 @@ interface Props {
   markers: Map<string, VerseMarker>;
   selectedVerse: string | null;
   searchedVerse: string | null;
-  recitingWord?: { verseKey: string; wordIndex: number } | null;
+  recitingWord?: { verseKey: string; wordIndex: number; accuracy: 'correct' | 'error' } | null;
   range: { from: string; to: string } | null;
   onVerseTap: (verseKey: string, el: HTMLElement, additive: boolean) => void;
   onRangeStart: (verseKey: string) => void;
@@ -283,7 +283,9 @@ export default function SvgMushafPage({
 
     if (recitingWord) {
       for (const group of groups) {
-        const key = `${group.dataset.surah}:${group.dataset.aya}`;
+        // The SVG pads these values ("001:002") while application verse keys
+        // use canonical numbers ("1:2"). Normalize before comparing.
+        const key = `${Number(group.dataset.surah)}:${Number(group.dataset.aya)}`;
         const wordIndex = Number(group.dataset.wordIndexInAyah);
         if (key !== recitingWord.verseKey || wordIndex !== recitingWord.wordIndex) continue;
         const box = group.getBBox();
@@ -293,7 +295,10 @@ export default function SvgMushafPage({
         wordHighlight.setAttribute('width', String(box.width + 3.6));
         wordHighlight.setAttribute('height', String(box.height + 3));
         wordHighlight.setAttribute('rx', '2');
-        wordHighlight.setAttribute('class', 'svg-reciting-word');
+        wordHighlight.setAttribute(
+          'class',
+          `svg-reciting-word svg-reciting-word--${recitingWord.accuracy}`,
+        );
         layer.appendChild(wordHighlight);
       }
     }
@@ -427,6 +432,9 @@ export default function SvgMushafPage({
       ref={setHostRef}
       className="svg-mushaf-page"
       data-page={page}
+      data-reciting-word={recitingWord
+        ? `${recitingWord.verseKey}:${recitingWord.wordIndex}:${recitingWord.accuracy}`
+        : undefined}
       onPointerMove={(event) => {
         if (event.pointerType === 'mouse') {
           setHoverKey(verseTargetAt(event.target)?.dataset.verseKey ?? null);

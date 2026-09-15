@@ -12,9 +12,10 @@ export interface RecitationPosition {
   word: string;
   surah: number;
   ayah: number;
+  accuracy: 'correct' | 'error';
 }
 
-interface CorpusWord extends RecitationPosition {
+interface CorpusWord extends Omit<RecitationPosition, 'accuracy'> {
   compactStart: number;
   compactEnd: number;
 }
@@ -147,18 +148,28 @@ function findRecitationPosition(
   return null;
 }
 
+function expectedWordAfter(character: number, corpus: RecitationCorpus) {
+  const currentOffset = corpus.charToWord[Math.min(character, corpus.charToWord.length - 1)];
+  const current = corpus.words[currentOffset];
+  if (!current) return null;
+  const expectedOffset = character >= current.compactEnd ? currentOffset + 1 : currentOffset;
+  return corpus.words[Math.min(expectedOffset, corpus.words.length - 1)] ?? null;
+}
+
 export default function RecitePanel({
   meta,
   compact = false,
   active = true,
   onPosition,
   onReset,
+  onClose,
 }: {
   meta: Meta;
   compact?: boolean;
   active?: boolean;
   onPosition: (position: RecitationPosition) => void;
   onReset: () => void;
+  onClose?: () => void;
 }) {
   const [corpus, setCorpus] = useState<RecitationCorpus | null>(null);
   const [supported, setSupported] = useState(true);
@@ -170,6 +181,7 @@ export default function RecitePanel({
   const shouldListen = useRef(false);
   const currentCharacter = useRef<number | null>(null);
   const currentWordKey = useRef('');
+  const currentAccuracy = useRef<'correct' | 'error' | null>(null);
   const lastErrorSound = useRef(0);
   const audioContext = useRef<AudioContext | null>(null);
 
@@ -228,10 +240,12 @@ export default function RecitePanel({
           word: word.word,
           surah: word.surah,
           ayah: word.ayah,
+          accuracy: 'correct',
         };
         const wordKey = `${word.verseKey}:${word.wordIndex}`;
-        if (wordKey !== currentWordKey.current) {
+        if (wordKey !== currentWordKey.current || currentAccuracy.current === 'error') {
           currentWordKey.current = wordKey;
+          currentAccuracy.current = 'correct';
           setPosition(nextPosition);
           onPosition(nextPosition);
         }
@@ -241,6 +255,22 @@ export default function RecitePanel({
     }
 
     if (isFinal && currentCharacter.current != null && compactRecitation(spoken).length >= 4) {
+      const expected = expectedWordAfter(currentCharacter.current, corpus);
+      if (expected) {
+        const errorPosition: RecitationPosition = {
+          verseKey: expected.verseKey,
+          page: expected.page,
+          wordIndex: expected.wordIndex,
+          word: expected.word,
+          surah: expected.surah,
+          ayah: expected.ayah,
+          accuracy: 'error',
+        };
+        currentWordKey.current = `${expected.verseKey}:${expected.wordIndex}:error`;
+        currentAccuracy.current = 'error';
+        setPosition(errorPosition);
+        onPosition(errorPosition);
+      }
       setStatus('Please check the last words and repeat');
       playError();
     } else if (currentCharacter.current == null) {
@@ -343,6 +373,7 @@ export default function RecitePanel({
   const reset = () => {
     currentCharacter.current = null;
     currentWordKey.current = '';
+    currentAccuracy.current = null;
     setPosition(null);
     setTranscript('');
     setStatus(listening ? 'Listening — start reciting…' : 'Ready to listen');
@@ -363,9 +394,16 @@ export default function RecitePanel({
       <header className={compact ? 'mb-2 flex items-center justify-between' : 'border-b px-4 py-3'}
         style={{ borderColor: 'var(--border)' }}>
         <h2 className="text-sm font-semibold">Recite</h2>
-        {compact && position ? (
-          <span className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>{position.verseKey}</span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {compact && position ? (
+            <span className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>{position.verseKey}</span>
+          ) : null}
+          {onClose ? (
+            <button className="btn btn-ghost h-8 w-8 p-0 text-lg" onClick={onClose} aria-label="Close recitation test">
+              ×
+            </button>
+          ) : null}
+        </div>
       </header>
 
       <div className={compact ? '' : 'scroll-y flex-1 space-y-4 p-4'}>
