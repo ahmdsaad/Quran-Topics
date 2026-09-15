@@ -5,7 +5,6 @@ import { useDraggable } from '@dnd-kit/core';
 import type { Meta, VerseMarker } from '@/lib/types';
 import { verseKeyInRange } from '@/lib/mushaf/verseRange';
 import { useDrag } from '@/components/dnd/DragLayer';
-import MushafPage from './MushafPage';
 
 interface Props {
   page: number;
@@ -27,6 +26,7 @@ export default function SvgMushafPage({
 }: Props) {
   const [markup, setMarkup] = useState('');
   const [error, setError] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [dragVerseKey, setDragVerseKey] = useState<string | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -74,17 +74,49 @@ export default function SvgMushafPage({
 
   useEffect(() => {
     let live = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const controller = new AbortController();
+    const source = `/mushaf-svg/${String(page).padStart(3, '0')}.svg`;
     setMarkup('');
     setError(false);
-    fetch(`/mushaf-svg/${String(page).padStart(3, '0')}.svg`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`SVG page ${page}: ${response.status}`);
-        return response.text();
-      })
-      .then((svg) => live && setMarkup(svg.replace(/^\uFEFF?<\?xml[^>]*>\s*/i, '')))
-      .catch(() => live && setError(true));
-    return () => { live = false; };
-  }, [page]);
+
+    const load = async () => {
+      // Mobile browsers can briefly fail a static-asset request while a new
+      // deployment/service worker is settling. The old implementation switched
+      // immediately to the HTML fallback, whose different typeface made one
+      // page look unrelated to the next. Retry the canonical vector page and
+      // never mix two Mushaf editions in the same reading stream.
+      for (let attempt = 0; attempt < 5 && live; attempt += 1) {
+        try {
+          const response = await fetch(source, {
+            cache: attempt === 0 ? 'default' : 'reload',
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error(`SVG page ${page}: ${response.status}`);
+          const svg = await response.text();
+          if (!svg.includes('id="md-page-inner"')) throw new Error(`SVG page ${page}: invalid document`);
+          if (live) setMarkup(svg.replace(/^\uFEFF?<\?xml[^>]*>\s*/i, ''));
+          return;
+        } catch {
+          if (!live || controller.signal.aborted) return;
+          if (attempt === 4) {
+            setError(true);
+            return;
+          }
+          await new Promise<void>((resolve) => {
+            retryTimer = setTimeout(resolve, 250 * 2 ** attempt);
+          });
+        }
+      }
+    };
+
+    void load();
+    return () => {
+      live = false;
+      controller.abort();
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [page, reloadToken]);
 
   const isSelected = useCallback(
     (key: string) => selectedVerse === key || (!!range && verseKeyInRange(key, range.from, range.to)),
@@ -350,8 +382,14 @@ export default function SvgMushafPage({
 
   if (error) {
     return (
-      <MushafPage page={page} meta={meta} markers={markers} selectedVerse={selectedVerse}
-        searchedVerse={searchedVerse} range={range} onVerseTap={onVerseTap} />
+      <div className="svg-mushaf-page flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>
+          Quran page {page} could not be loaded.
+        </p>
+        <button className="btn btn-secondary" onClick={() => setReloadToken((token) => token + 1)}>
+          Try again
+        </button>
+      </div>
     );
   }
   if (!markup) return <div className="svg-mushaf-page animate-pulse" aria-label={`Loading Quran page ${page}`} />;
