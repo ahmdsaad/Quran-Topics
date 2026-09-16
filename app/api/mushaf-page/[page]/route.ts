@@ -18,7 +18,7 @@ export async function GET(_request: Request, context: RouteContext<'/api/mushaf-
     if (!upstream.ok) throw new Error(`QUL returned ${upstream.status}`);
 
     const html = await upstream.text();
-    const pageId = `id="Mushaf_Page_${page}"`;
+    const pageId = `id="Mushaf_Page_${String(page).padStart(3, '0')}"`;
     const idAt = html.indexOf(pageId);
     const start = idAt < 0 ? -1 : html.lastIndexOf('<svg', idAt);
     const endAt = start < 0 ? -1 : html.indexOf('</svg>', idAt);

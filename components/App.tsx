@@ -325,6 +325,13 @@ export default function App() {
         ? { from: selectionAnchor, to: selectionAnchor }
         : null;
 
+  const handleCorrectRecitationWords = useCallback((keys: string[]) => {
+    setRevealedRecitationWords((previous) => {
+      if (keys.every((key) => previous.has(key))) return previous;
+      return new Set([...previous, ...keys]);
+    });
+  }, []);
+
   // ------------------------------------------------------------------ states
   if (phase === 'loading') {
     return (
@@ -390,13 +397,6 @@ export default function App() {
     setRecitationPosition(position);
     if (position.page !== recitePageRef.current) openRecitePage(position.page);
   };
-
-  const handleCorrectRecitationWords = useCallback((keys: string[]) => {
-    setRevealedRecitationWords((previous) => {
-      if (keys.every((key) => previous.has(key))) return previous;
-      return new Set([...previous, ...keys]);
-    });
-  }, []);
 
   const resetRecitation = () => {
     setRecitationPosition(null);
