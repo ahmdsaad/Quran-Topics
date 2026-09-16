@@ -13,6 +13,8 @@ interface Props {
   selectedVerse: string | null;
   searchedVerse: string | null;
   recitingWord?: { verseKey: string; wordIndex: number; accuracy: 'correct' | 'error' } | null;
+  revealOnly?: boolean;
+  revealedWords?: ReadonlySet<string>;
   range: { from: string; to: string } | null;
   onVerseTap: (verseKey: string, el: HTMLElement, additive: boolean) => void;
   onRangeStart: (verseKey: string) => void;
@@ -41,6 +43,8 @@ export default function Reader({
   selectedVerse,
   searchedVerse,
   recitingWord = null,
+  revealOnly = false,
+  revealedWords,
   range,
   onVerseTap,
   onRangeStart,
@@ -297,6 +301,8 @@ export default function Reader({
                 selectedVerse={selectedVerse}
                 searchedVerse={searchedVerse}
                 recitingWord={recitingWord}
+                revealOnly={revealOnly}
+                revealedWords={revealedWords}
                 range={range}
                 onVerseTap={onVerseTap}
                 onRangeStart={onRangeStart}

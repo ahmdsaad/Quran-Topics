@@ -62,6 +62,8 @@ export default function App() {
   const [recitePage, setRecitePage] = useState(1);
   const [reciteJumpToken, setReciteJumpToken] = useState(0);
   const [recitationPosition, setRecitationPosition] = useState<RecitationPosition | null>(null);
+  const [revealOnly, setRevealOnly] = useState(false);
+  const [revealedRecitationWords, setRevealedRecitationWords] = useState<ReadonlySet<string>>(() => new Set());
   const recitePageRef = useRef(1);
   const [dual, setDual] = useState(false);
 
@@ -389,6 +391,18 @@ export default function App() {
     if (position.page !== recitePageRef.current) openRecitePage(position.page);
   };
 
+  const handleCorrectRecitationWords = useCallback((keys: string[]) => {
+    setRevealedRecitationWords((previous) => {
+      if (keys.every((key) => previous.has(key))) return previous;
+      return new Set([...previous, ...keys]);
+    });
+  }, []);
+
+  const resetRecitation = () => {
+    setRecitationPosition(null);
+    setRevealedRecitationWords(new Set());
+  };
+
   const readerPane = (
     <Reader
       meta={meta}
@@ -421,6 +435,8 @@ export default function App() {
             accuracy: recitationPosition.accuracy,
           }
         : null}
+      revealOnly={revealOnly}
+      revealedWords={revealedRecitationWords}
       range={null}
       onVerseTap={handleVerseTap}
       onRangeStart={startRange}
@@ -441,21 +457,27 @@ export default function App() {
       meta={meta}
       active={mobilePane === 'recite'}
       onPosition={handleRecitationPosition}
-      onReset={() => setRecitationPosition(null)}
+      onCorrectWords={handleCorrectRecitationWords}
+      onReset={resetRecitation}
+      revealOnly={revealOnly}
+      onRevealOnlyChange={setRevealOnly}
     />
   );
 
   const mobileRecitePane = (
     <div className="relative h-full">
       {reciteReaderPane}
-      <div className="pointer-events-none absolute inset-x-3 bottom-3 z-30 flex justify-end">
-        <div className="pointer-events-auto w-full max-w-sm">
+      <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center lg:hidden">
+        <div className="pointer-events-auto">
           <RecitePanel
             meta={meta}
             compact
             active={mobilePane === 'recite'}
             onPosition={handleRecitationPosition}
-            onReset={() => setRecitationPosition(null)}
+            onCorrectWords={handleCorrectRecitationWords}
+            onReset={resetRecitation}
+            revealOnly={revealOnly}
+            onRevealOnlyChange={setRevealOnly}
           />
         </div>
       </div>
@@ -732,7 +754,7 @@ export default function App() {
               openMarksPage(page);
               if (!dual) setMobileMarksReader(true);
             } else if (mobilePane === 'recite') {
-              setRecitationPosition(null);
+              resetRecitation();
               openRecitePage(page);
             } else {
               jumpTo(page);

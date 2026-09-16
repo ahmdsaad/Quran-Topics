@@ -13,6 +13,8 @@ interface Props {
   selectedVerse: string | null;
   searchedVerse: string | null;
   recitingWord?: { verseKey: string; wordIndex: number; accuracy: 'correct' | 'error' } | null;
+  revealOnly?: boolean;
+  revealedWords?: ReadonlySet<string>;
   range: { from: string; to: string } | null;
   onVerseTap: (verseKey: string, el: HTMLElement, additive: boolean) => void;
   onRangeStart: (verseKey: string) => void;
@@ -23,7 +25,7 @@ interface Props {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export default function SvgMushafPage({
-  page, meta, markers, selectedVerse, searchedVerse, recitingWord = null, range, onVerseTap, onRangeStart, compactMobile = false, active = true,
+  page, meta, markers, selectedVerse, searchedVerse, recitingWord = null, revealOnly = false, revealedWords, range, onVerseTap, onRangeStart, compactMobile = false, active = true,
 }: Props) {
   const [markup, setMarkup] = useState('');
   const [error, setError] = useState(false);
@@ -211,13 +213,17 @@ export default function SvgMushafPage({
       const juzHeader = svg.querySelector<SVGGElement>('#md-non-quranic-header-juz-name');
       if (surahHeader && Number.isFinite(quranLeft)) {
         const box = surahHeader.getBBox();
-        surahHeader.setAttribute('transform', `translate(${(quranLeft! - box.x).toFixed(2)} 36)`);
+        const currentTop = box.y + 36;
+        const halfTopGap = mobileTop + (currentTop - mobileTop) / 2;
+        surahHeader.setAttribute('transform', `translate(${(quranLeft! - box.x).toFixed(2)} ${(halfTopGap - box.y).toFixed(2)})`);
       }
       if (juzHeader && Number.isFinite(quranRight)) {
         const box = juzHeader.getBBox();
+        const currentTop = box.y + 36;
+        const halfTopGap = mobileTop + (currentTop - mobileTop) / 2;
         juzHeader.setAttribute(
           'transform',
-          `translate(${(quranRight! - box.x - box.width).toFixed(2)} 36)`,
+          `translate(${(quranRight! - box.x - box.width).toFixed(2)} ${(halfTopGap - box.y).toFixed(2)})`,
         );
       }
       // Pull the folio number upward; the shortened mobile viewBox removes the
@@ -242,13 +248,17 @@ export default function SvgMushafPage({
       if (surahHeader && Number.isFinite(quranLeft) && Number.isFinite(quranTop)) {
         const box = surahHeader.getBBox();
         const dx = quranLeft! - box.x;
-        const dy = quranTop! - headerGap - box.y - box.height;
+        const currentTop = quranTop! - headerGap - box.height;
+        const halfTopGap = desktopTop + (currentTop - desktopTop) / 2;
+        const dy = halfTopGap - box.y;
         surahHeader.setAttribute('transform', `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`);
       }
       if (juzHeader && Number.isFinite(quranRight) && Number.isFinite(quranTop)) {
         const box = juzHeader.getBBox();
         const dx = quranRight! - box.x - box.width;
-        const dy = quranTop! - headerGap - box.y - box.height;
+        const currentTop = quranTop! - headerGap - box.height;
+        const halfTopGap = desktopTop + (currentTop - desktopTop) / 2;
+        const dy = halfTopGap - box.y;
         juzHeader.setAttribute('transform', `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`);
       }
       if (pageNumber && Number.isFinite(quranBottom)) {
@@ -270,6 +280,11 @@ export default function SvgMushafPage({
     const groups = Array.from(
       pageInner.querySelectorAll<SVGGElement>('g[data-surah][data-aya][data-line-number]')
     );
+    pageInner.querySelectorAll<SVGGElement>('g[data-type="surah-name"], g[data-type="bismillah"]')
+      .forEach((group) => {
+        if (revealOnly) group.setAttribute('visibility', 'hidden');
+        else group.removeAttribute('visibility');
+      });
     const segments = new Map<string, { key: string; boxes: DOMRect[]; marker?: VerseMarker }>();
 
     for (const group of groups) {
@@ -278,6 +293,13 @@ export default function SvgMushafPage({
       const key = `${surah}:${ayah}`;
       group.dataset.verseKey = key;
       group.classList.add('svg-mushaf-word');
+      if (revealOnly) {
+        const wordIndex = Number(group.dataset.wordIndexInAyah);
+        const wordKey = `${key}:${wordIndex}`;
+        group.setAttribute('visibility', Number.isFinite(wordIndex) && revealedWords?.has(wordKey) ? 'visible' : 'hidden');
+      } else {
+        group.removeAttribute('visibility');
+      }
       const segmentKey = `${key}-${group.dataset.lineNumber}`;
       const current = segments.get(segmentKey) ?? { key, boxes: [], marker: markers.get(key) };
       current.boxes.push(group.getBBox() as unknown as DOMRect);
@@ -343,7 +365,7 @@ export default function SvgMushafPage({
       hitArea.setAttribute('focusable', 'false');
       hitLayer.appendChild(hitArea);
 
-      if (kind) {
+      if (kind && !revealOnly) {
         const rect = document.createElementNS(SVG_NS, 'rect');
         rect.setAttribute('x', String(left - 1.5));
         rect.setAttribute('y', String(top - 1));
@@ -357,7 +379,7 @@ export default function SvgMushafPage({
         layer.appendChild(rect);
       }
 
-      if (segment.marker?.hasBookmark && !selected) {
+      if (segment.marker?.hasBookmark && !selected && !revealOnly) {
         const underline = document.createElementNS(SVG_NS, 'line');
         underline.setAttribute('x1', String(left));
         underline.setAttribute('x2', String(right));
@@ -368,7 +390,7 @@ export default function SvgMushafPage({
         layer.appendChild(underline);
       }
 
-      if (qa) {
+      if (qa && !revealOnly) {
         const qaUnderline = document.createElementNS(SVG_NS, 'line');
         qaUnderline.setAttribute('x1', String(left));
         qaUnderline.setAttribute('x2', String(right));
@@ -380,7 +402,7 @@ export default function SvgMushafPage({
     }
     pageInner.insertBefore(layer, pageInner.firstChild);
     pageInner.appendChild(hitLayer);
-  }, [markup, markers, hoverKey, isSelected, categoryToneByVerse, compactMobile, searchedVerse, recitingWord, active]);
+  }, [markup, markers, hoverKey, isSelected, categoryToneByVerse, compactMobile, searchedVerse, recitingWord, revealOnly, revealedWords, active]);
 
   const verseTargetAt = (target: EventTarget | null) =>
     (target as Element | null)?.closest<SVGElement>('[data-verse-key]') ?? null;

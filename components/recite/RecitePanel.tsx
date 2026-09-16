@@ -110,7 +110,7 @@ function findRecitationPosition(
   nearCharacter: number | null,
 ) {
   const compactSpoken = compactRecitation(spoken);
-  if (compactSpoken.length < 4) return null;
+  if (!compactSpoken) return null;
 
   const maxLength = Math.min(56, compactSpoken.length);
   for (let length = maxLength; length >= 4; length -= 1) {
@@ -145,6 +145,18 @@ function findRecitationPosition(
     return { endCharacter, matchedCharacters: length };
   }
 
+  // A continuing recitation may arrive as one short word (for example "في").
+  // Match it only against the next expected Quran word, never globally, so
+  // the short utterance cannot jump to an unrelated occurrence elsewhere.
+  if (nearCharacter != null) {
+    const expected = expectedWordAfter(nearCharacter, corpus);
+    const spokenWords = recitationText(spoken).split(' ').filter(Boolean);
+    const lastWord = compactRecitation(spokenWords.at(-1) ?? '');
+    if (expected && lastWord === corpus.compact.slice(expected.compactStart, expected.compactEnd + 1)) {
+      return { endCharacter: expected.compactEnd, matchedCharacters: lastWord.length };
+    }
+  }
+
   return null;
 }
 
@@ -161,15 +173,21 @@ export default function RecitePanel({
   compact = false,
   active = true,
   onPosition,
+  onCorrectWords,
   onReset,
   onClose,
+  revealOnly = false,
+  onRevealOnlyChange,
 }: {
   meta: Meta;
   compact?: boolean;
   active?: boolean;
   onPosition: (position: RecitationPosition) => void;
+  onCorrectWords: (keys: string[]) => void;
   onReset: () => void;
   onClose?: () => void;
+  revealOnly?: boolean;
+  onRevealOnlyChange: (value: boolean) => void;
 }) {
   const [corpus, setCorpus] = useState<RecitationCorpus | null>(null);
   const [supported, setSupported] = useState(true);
@@ -229,6 +247,17 @@ export default function RecitePanel({
     );
 
     if (match && advancing) {
+      const matchedStart = match.endCharacter - match.matchedCharacters + 1;
+      const firstWord = corpus.charToWord[matchedStart];
+      const lastWord = corpus.charToWord[match.endCharacter];
+      const correctWords: string[] = [];
+      for (let offset = firstWord; offset <= lastWord; offset += 1) {
+        const candidate = corpus.words[offset];
+        if (candidate && candidate.compactStart >= matchedStart && candidate.compactEnd <= match.endCharacter) {
+          correctWords.push(`${candidate.verseKey}:${candidate.wordIndex}`);
+        }
+      }
+      if (correctWords.length) onCorrectWords(correctWords);
       currentCharacter.current = Math.max(currentCharacter.current ?? 0, match.endCharacter);
       const wordOffset = corpus.charToWord[currentCharacter.current];
       const word = corpus.words[wordOffset];
@@ -254,7 +283,7 @@ export default function RecitePanel({
       return;
     }
 
-    if (isFinal && currentCharacter.current != null && compactRecitation(spoken).length >= 4) {
+    if (isFinal && currentCharacter.current != null && recitationText(spoken).length >= 2) {
       const expected = expectedWordAfter(currentCharacter.current, corpus);
       if (expected) {
         const errorPosition: RecitationPosition = {
@@ -276,7 +305,7 @@ export default function RecitePanel({
     } else if (currentCharacter.current == null) {
       setStatus('Listening — keep reciting so I can find your place…');
     }
-  }, [corpus, onPosition, playError]);
+  }, [corpus, onCorrectWords, onPosition, playError]);
 
   const stop = useCallback(() => {
     shouldListen.current = false;
@@ -383,30 +412,64 @@ export default function RecitePanel({
   return (
     <section
       className={compact
-        ? 'rounded-xl border p-3 shadow-lg backdrop-blur'
+        ? 'rounded-full border px-1 py-0.5 shadow-sm'
         : 'flex h-full flex-col overflow-hidden'}
       style={{
         borderColor: 'var(--border)',
-        background: compact ? 'color-mix(in srgb, var(--surface) 94%, transparent)' : 'var(--surface)',
+        background: 'var(--surface)',
       }}
       aria-label="Recitation checker"
     >
-      <header className={compact ? 'mb-2 flex items-center justify-between' : 'border-b px-4 py-3'}
+      {!compact ? <header className="border-b px-4 py-3"
         style={{ borderColor: 'var(--border)' }}>
         <h2 className="text-sm font-semibold">Recite</h2>
         <div className="flex items-center gap-2">
-          {compact && position ? (
-            <span className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>{position.verseKey}</span>
-          ) : null}
           {onClose ? (
             <button className="btn btn-ghost h-8 w-8 p-0 text-lg" onClick={onClose} aria-label="Close recitation test">
               ×
             </button>
           ) : null}
         </div>
-      </header>
+      </header> : null}
 
-      <div className={compact ? '' : 'scroll-y flex-1 space-y-4 p-4'}>
+      {compact ? (
+        <div className="flex items-center gap-0.5" role="group" aria-label="Test recitation controls">
+          <button
+            className="flex h-8 w-8 items-center justify-center rounded-full text-base"
+            style={{ color: listening ? '#b42318' : 'var(--accent)', background: listening ? '#fee4e2' : undefined }}
+            disabled={!corpus || !supported}
+            onClick={listening ? stop : start}
+            aria-label={listening ? 'Stop listening' : 'Start listening'}
+            title={listening ? 'Stop listening' : 'Start listening'}
+          >
+            {listening ? '■' : '●'}
+          </button>
+          <button
+            className="flex h-8 w-8 items-center justify-center rounded-full text-base"
+            style={{ color: revealOnly ? 'var(--accent)' : 'var(--ink-soft)', background: revealOnly ? 'var(--accent-soft)' : undefined }}
+            onClick={() => onRevealOnlyChange(!revealOnly)}
+            aria-label={revealOnly ? 'Show full Quran text' : 'Reveal Quran word by word'}
+            aria-pressed={revealOnly}
+            title={revealOnly ? 'Show full Quran text' : 'Reveal Quran word by word'}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2 12s3.7-5.5 10-5.5S22 12 22 12s-3.7 5.5-10 5.5S2 12 2 12Z" />
+              <circle cx="12" cy="12" r="2.5" />
+              {revealOnly ? <path d="M3 21 21 3" /> : null}
+            </svg>
+          </button>
+          <button
+            className="flex h-8 w-8 items-center justify-center rounded-full text-sm"
+            style={{ color: 'var(--ink-soft)' }}
+            onClick={reset}
+            aria-label="Reset recitation test"
+            title="Reset recitation test"
+          >
+            ↺
+          </button>
+          <span role="status" className="sr-only">{status}</span>
+        </div>
+      ) : <div className="scroll-y flex-1 space-y-4 p-4">
         {!compact ? (
           <div className="rounded-lg border p-3 text-xs leading-relaxed" style={{ borderColor: 'var(--border)', color: 'var(--ink-soft)' }}>
             This mode follows recognized Quran words. It can flag a likely word mismatch, but it does not grade tajwīd or subtle pronunciation and may occasionally mishear speech.
@@ -427,6 +490,15 @@ export default function RecitePanel({
           </button>
         </div>
 
+        <button
+          className="btn btn-secondary w-full justify-start gap-2"
+          onClick={() => onRevealOnlyChange(!revealOnly)}
+          aria-pressed={revealOnly}
+        >
+          <span aria-hidden>👁</span>
+          {revealOnly ? 'Reveal words only · On' : 'Reveal words only · Off'}
+        </button>
+
         <div className={compact ? 'mt-2' : ''}>
           <p className="text-xs font-medium" style={{ color: listening ? '#258147' : 'var(--ink-soft)' }}>
             {status}
@@ -443,7 +515,7 @@ export default function RecitePanel({
             </p>
           ) : null}
         </div>
-      </div>
+      </div>}
     </section>
   );
 }
