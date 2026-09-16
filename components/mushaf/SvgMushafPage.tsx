@@ -197,10 +197,12 @@ export default function SvgMushafPage({
       // Crop the unused paper gutters in the viewBox itself. This makes the
       // Quran larger without CSS scaling that can clip the running headers or
       // folio number at the page boundary.
-      const mobileWidth = 255;
+      // A gentle, centered crop uses more of the phone width for Quran text
+      // while retaining the alternating printed-page headers and folio number.
+      const mobileWidth = 249;
       const mobileX = Math.max(0, Math.min(382.68 - mobileWidth, quranCenter - mobileWidth / 2));
-      const mobileTop = 24;
-      const mobileHeight = 488;
+      const mobileTop = 29;
+      const mobileHeight = mobileWidth * (488 / 255);
       svg.setAttribute('viewBox', `${mobileX.toFixed(2)} ${mobileTop} ${mobileWidth} ${mobileHeight}`);
       svg.querySelector<SVGGElement>('#md-non-quranic-margin-juz-hisb')?.setAttribute('display', 'none');
       // The running labels also alternate with the binding gutter. Align their
@@ -221,16 +223,17 @@ export default function SvgMushafPage({
       // Pull the folio number upward; the shortened mobile viewBox removes the
       // remaining paper-only whitespace above and below the useful page area.
       svg.querySelector<SVGGElement>('#md-non-quranic-page-number')
-        ?.setAttribute('transform', 'translate(0 -22)');
+        ?.setAttribute('transform', 'translate(0 -28)');
     } else {
       // Physical Mushaf spreads alternate a wider binding gutter between the
       // left and right edges. In a single-page desktop reader that makes the
       // Quran block appear to jump sideways. Shift the viewport by the
       // measured text center so both sides have equal visual padding.
-      const desktopWidth = 382.68;
-      const desktopHeight = 547.09;
+      const desktopWidth = 376;
+      const desktopHeight = desktopWidth * (547.09 / 382.68);
       const desktopX = quranCenter - desktopWidth / 2;
-      svg.setAttribute('viewBox', `${desktopX.toFixed(2)} 0 ${desktopWidth} ${desktopHeight}`);
+      const desktopTop = 5;
+      svg.setAttribute('viewBox', `${desktopX.toFixed(2)} ${desktopTop} ${desktopWidth} ${desktopHeight.toFixed(2)}`);
 
       const surahHeader = svg.querySelector<SVGGElement>('#md-non-quranic-header-surah-name');
       const juzHeader = svg.querySelector<SVGGElement>('#md-non-quranic-header-juz-name');
