@@ -20,6 +20,7 @@ const CACHE = path.join(ROOT, '.cache');
 // Pinned refs. Bump deliberately — build-corpus.mjs validates against them.
 const LAYOUT = 'https://cdn.jsdelivr.net/gh/zonetecde/mushaf-layout@main/mushaf';
 const FONTS_V1 = 'https://cdn.jsdelivr.net/gh/nuqayah/qpc-fonts@master/mushaf-woff2';
+const FONTS_V1_FALLBACK = 'https://raw.githubusercontent.com/nuqayah/qpc-fonts/master/mushaf-woff2';
 const TRANSLATIONS = [
   ['en', 'en.sahih', 'English'],
   ['ru', 'ru.kuliev', 'Russian'],
@@ -68,7 +69,7 @@ async function pool(items, worker) {
  * refused, pausing longer each round. Throws only if a sweep makes no progress
  * twice running — that means genuinely unreachable, not throttled.
  */
-async function fetchAll(label, urlOf, destOf) {
+async function fetchAll(label, urlOf, destOf, fallbackUrlOf) {
   let stalled = 0;
 
   for (let sweep = 0; sweep < SWEEPS; sweep++) {
@@ -84,7 +85,14 @@ async function fetchAll(label, urlOf, destOf) {
         await fetchTo(urlOf(n), destOf(n));
         process.stdout.write('.');
       } catch {
-        /* swept up next round */
+        if (fallbackUrlOf) {
+          try {
+            await fetchTo(fallbackUrlOf(n), destOf(n));
+            process.stdout.write('.');
+          } catch {
+            /* swept up next round */
+          }
+        }
       }
     });
 
@@ -115,7 +123,12 @@ const mb = (dir) =>
     : '0';
 
 await fetchAll('mushaf layout', (n) => `${LAYOUT}/page-${pad(n)}.json`, layoutPath);
-await fetchAll('QPC v1 fonts ', (n) => `${FONTS_V1}/QCF_P${pad(n)}.woff2`, fontPath);
+await fetchAll(
+  'QPC v1 fonts ',
+  (n) => `${FONTS_V1}/QCF_P${pad(n)}.woff2`,
+  fontPath,
+  (n) => `${FONTS_V1_FALLBACK}/QCF_P${pad(n)}.woff2`
+);
 
 for (const [language, edition, label] of TRANSLATIONS) {
   const translationPath = path.join(CACHE, `translation-${language}.json`);
