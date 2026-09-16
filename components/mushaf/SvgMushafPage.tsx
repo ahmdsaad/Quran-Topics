@@ -214,16 +214,18 @@ export default function SvgMushafPage({
       if (surahHeader && Number.isFinite(quranLeft)) {
         const box = surahHeader.getBBox();
         const currentTop = box.y + 36;
-        const halfTopGap = mobileTop + (currentTop - mobileTop) / 2;
-        surahHeader.setAttribute('transform', `translate(${(quranLeft! - box.x).toFixed(2)} ${(halfTopGap - box.y).toFixed(2)})`);
+        // The existing placement already halves the printed top gutter;
+        // quartering it halves the visible gap to the page divider again.
+        const labelTop = mobileTop + (currentTop - mobileTop) / 4;
+        surahHeader.setAttribute('transform', `translate(${(quranLeft! - box.x).toFixed(2)} ${(labelTop - box.y).toFixed(2)})`);
       }
       if (juzHeader && Number.isFinite(quranRight)) {
         const box = juzHeader.getBBox();
         const currentTop = box.y + 36;
-        const halfTopGap = mobileTop + (currentTop - mobileTop) / 2;
+        const labelTop = mobileTop + (currentTop - mobileTop) / 4;
         juzHeader.setAttribute(
           'transform',
-          `translate(${(quranRight! - box.x - box.width).toFixed(2)} ${(halfTopGap - box.y).toFixed(2)})`,
+          `translate(${(quranRight! - box.x - box.width).toFixed(2)} ${(labelTop - box.y).toFixed(2)})`,
         );
       }
       // Pull the folio number upward; the shortened mobile viewBox removes the
@@ -249,16 +251,16 @@ export default function SvgMushafPage({
         const box = surahHeader.getBBox();
         const dx = quranLeft! - box.x;
         const currentTop = quranTop! - headerGap - box.height;
-        const halfTopGap = desktopTop + (currentTop - desktopTop) / 2;
-        const dy = halfTopGap - box.y;
+        const labelTop = desktopTop + (currentTop - desktopTop) / 4;
+        const dy = labelTop - box.y;
         surahHeader.setAttribute('transform', `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`);
       }
       if (juzHeader && Number.isFinite(quranRight) && Number.isFinite(quranTop)) {
         const box = juzHeader.getBBox();
         const dx = quranRight! - box.x - box.width;
         const currentTop = quranTop! - headerGap - box.height;
-        const halfTopGap = desktopTop + (currentTop - desktopTop) / 2;
-        const dy = halfTopGap - box.y;
+        const labelTop = desktopTop + (currentTop - desktopTop) / 4;
+        const dy = labelTop - box.y;
         juzHeader.setAttribute('transform', `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`);
       }
       if (pageNumber && Number.isFinite(quranBottom)) {
