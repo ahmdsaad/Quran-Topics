@@ -59,9 +59,12 @@ export default function App() {
   const [marksPage, setMarksPage] = useState(1);
   const [marksJumpToken, setMarksJumpToken] = useState(0);
   const [mobileMarksReader, setMobileMarksReader] = useState(false);
-  const [recitationOpen, setRecitationOpen] = useState(false);
+  const [readSubview, setReadSubview] = useState<'read' | 'recitation'>('read');
+  const [recitePage, setRecitePage] = useState(1);
+  const [reciteJumpToken, setReciteJumpToken] = useState(0);
   const [recitationPosition, setRecitationPosition] = useState<RecitationPosition | null>(null);
   const readingPageRef = useRef(1);
+  const recitePageRef = useRef(1);
   const [dual, setDual] = useState(false);
 
   const {
@@ -115,6 +118,8 @@ export default function App() {
         setInitialPage(page);
         setCurrentPage(page);
         readingPageRef.current = page;
+        setRecitePage(page);
+        recitePageRef.current = page;
         // The updater uses `page` as a one-time, synchronous hand-off across a
         // mobile refresh. Remove it after consuming it so a later launch can
         // resume from whichever device most recently updated the cloud state.
@@ -376,22 +381,45 @@ export default function App() {
   }
 
   // ------------------------------------------------------------------- shell
+  const openRecitePage = (page: number) => {
+    recitePageRef.current = page;
+    setRecitePage(page);
+    setReciteJumpToken((token) => token + 1);
+  };
+
   const handleRecitationPosition = (position: RecitationPosition) => {
     setRecitationPosition(position);
-    if (position.page !== readingPageRef.current) jumpTo(position.page);
+    if (position.page !== recitePageRef.current) openRecitePage(position.page);
   };
 
-  const closeRecitation = () => {
-    setRecitationOpen(false);
-    setRecitationPosition(null);
-  };
+  const readingQuran = (
+    <Reader
+      meta={meta}
+      markers={markers}
+      selectedVerse={activeVerse}
+      searchedVerse={null}
+      range={range}
+      onVerseTap={handleVerseTap}
+      onRangeStart={startRange}
+      initialPage={jumpToken > 0 && jumpPage !== currentPage ? jumpPage : currentPage}
+      jumpToken={jumpToken}
+      scale={scale}
+      active={mobilePane === 'reader' && readSubview === 'read'}
+      onPageChange={(page) => {
+        if (mobilePane === 'reader' && readSubview === 'read') {
+          readingPageRef.current = page;
+          setCurrentPage(page);
+        }
+      }}
+    />
+  );
 
-  const readerPane = (
+  const recitationQuran = (
     <div className="relative h-full">
       <Reader
         meta={meta}
         markers={markers}
-        selectedVerse={activeVerse}
+        selectedVerse={null}
         searchedVerse={null}
         recitingWord={recitationPosition
           ? {
@@ -400,42 +428,59 @@ export default function App() {
               accuracy: recitationPosition.accuracy,
             }
           : null}
-        range={range}
+        range={null}
         onVerseTap={handleVerseTap}
         onRangeStart={startRange}
-        initialPage={jumpToken > 0 && jumpPage !== currentPage ? jumpPage : currentPage}
-        jumpToken={jumpToken}
+        initialPage={recitePage}
+        jumpToken={reciteJumpToken}
         scale={scale}
-        active={mobilePane === 'reader'}
+        persistReading={false}
+        active={mobilePane === 'reader' && readSubview === 'recitation'}
         onPageChange={(page) => {
-          if (mobilePane === 'reader') {
-            readingPageRef.current = page;
-            setCurrentPage(page);
-          }
+          recitePageRef.current = page;
+          setRecitePage(page);
         }}
       />
       <div className="pointer-events-none absolute inset-x-3 bottom-3 z-30 flex justify-end">
         <div className="pointer-events-auto w-full max-w-sm">
-          {recitationOpen ? (
-            <RecitePanel
-              meta={meta}
-              compact
-              active={mobilePane === 'reader'}
-              onPosition={handleRecitationPosition}
-              onReset={() => setRecitationPosition(null)}
-              onClose={closeRecitation}
-            />
-          ) : (
-            <div className="flex justify-end">
-              <button
-                className="btn btn-primary gap-2 shadow-lg"
-                onClick={() => setRecitationOpen(true)}
-              >
-                <span aria-hidden>●</span>
-                Test recitation
-              </button>
-            </div>
-          )}
+          <RecitePanel
+            meta={meta}
+            compact
+            active={mobilePane === 'reader' && readSubview === 'recitation'}
+            onPosition={handleRecitationPosition}
+            onReset={() => setRecitationPosition(null)}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  const readerPane = (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 justify-center border-b p-1" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <div className="flex rounded-lg p-0.5" style={{ background: 'var(--surface-2)' }} aria-label="Read mode">
+          <button
+            className="btn btn-ghost px-4 py-1.5 text-xs"
+            style={readSubview === 'read' ? { color: 'var(--accent)', background: 'var(--accent-soft)' } : undefined}
+            onClick={() => setReadSubview('read')}
+          >
+            Read
+          </button>
+          <button
+            className="btn btn-ghost px-4 py-1.5 text-xs"
+            style={readSubview === 'recitation' ? { color: 'var(--accent)', background: 'var(--accent-soft)' } : undefined}
+            onClick={() => setReadSubview('recitation')}
+          >
+            Test recitation
+          </button>
+        </div>
+      </div>
+      <div className="relative min-h-0 flex-1">
+        <div className={readSubview === 'read' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
+          {readingQuran}
+        </div>
+        <div className={readSubview === 'recitation' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
+          {recitationQuran}
         </div>
       </div>
     </div>
@@ -691,7 +736,9 @@ export default function App() {
                 ? qaPage
               : mobilePane === 'bookmarks' && (dual || mobileMarksReader)
                 ? marksPage
-              : currentPage}
+              : mobilePane === 'reader' && readSubview === 'recitation'
+                ? recitePage
+                : currentPage}
           dual={dual}
           onJump={(page) => {
             if (mobilePane === 'search') {
@@ -706,6 +753,9 @@ export default function App() {
             } else if (mobilePane === 'bookmarks') {
               openMarksPage(page);
               if (!dual) setMobileMarksReader(true);
+            } else if (readSubview === 'recitation') {
+              setRecitationPosition(null);
+              openRecitePage(page);
             } else {
               jumpTo(page);
             }
