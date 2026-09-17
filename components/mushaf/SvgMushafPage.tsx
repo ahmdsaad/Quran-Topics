@@ -199,12 +199,16 @@ export default function SvgMushafPage({
       // Crop the unused paper gutters in the viewBox itself. This makes the
       // Quran larger without CSS scaling that can clip the running headers or
       // folio number at the page boundary.
-      // A gentle, centered crop uses more of the phone width for Quran text
-      // while retaining the alternating printed-page headers and folio number.
+      // The Quran block already reaches almost both phone edges. Keep that
+      // horizontal safety margin, but crop the unused space above the text.
       const mobileWidth = 249;
       const mobileX = Math.max(0, Math.min(382.68 - mobileWidth, quranCenter - mobileWidth / 2));
-      const mobileTop = 29;
-      const mobileHeight = mobileWidth * (488 / 255);
+      // Leave enough room for the running labels on normal pages. Opening
+      // pages without labels may have a taller printed top gutter.
+      const mobileTop = Number.isFinite(quranTop)
+        ? quranTop! - (quranTop! - 29) * 0.57
+        : 47;
+      const mobileHeight = mobileWidth * 1.85;
       svg.setAttribute('viewBox', `${mobileX.toFixed(2)} ${mobileTop} ${mobileWidth} ${mobileHeight}`);
       svg.querySelector<SVGGElement>('#md-non-quranic-margin-juz-hisb')?.setAttribute('display', 'none');
       // The running labels also alternate with the binding gutter. Align their
@@ -213,16 +217,12 @@ export default function SvgMushafPage({
       const juzHeader = svg.querySelector<SVGGElement>('#md-non-quranic-header-juz-name');
       if (surahHeader && Number.isFinite(quranLeft)) {
         const box = surahHeader.getBBox();
-        const currentTop = box.y + 36;
-        // The existing placement already halves the printed top gutter;
-        // quartering it halves the visible gap to the page divider again.
-        const labelTop = mobileTop + (currentTop - mobileTop) / 4;
+        const labelTop = mobileTop + 2.5;
         surahHeader.setAttribute('transform', `translate(${(quranLeft! - box.x).toFixed(2)} ${(labelTop - box.y).toFixed(2)})`);
       }
       if (juzHeader && Number.isFinite(quranRight)) {
         const box = juzHeader.getBBox();
-        const currentTop = box.y + 36;
-        const labelTop = mobileTop + (currentTop - mobileTop) / 4;
+        const labelTop = mobileTop + 2.5;
         juzHeader.setAttribute(
           'transform',
           `translate(${(quranRight! - box.x - box.width).toFixed(2)} ${(labelTop - box.y).toFixed(2)})`,
@@ -237,29 +237,30 @@ export default function SvgMushafPage({
       // left and right edges. In a single-page desktop reader that makes the
       // Quran block appear to jump sideways. Shift the viewport by the
       // measured text center so both sides have equal visual padding.
-      const desktopWidth = 376;
-      const desktopHeight = desktopWidth * (547.09 / 382.68);
+      // Halve the visible side gutters while keeping every glyph inside the
+      // viewBox. A taller crop preserves the folio beneath the last line.
+      const desktopWidth = 293;
+      const desktopHeight = desktopWidth * 1.56;
       const desktopX = quranCenter - desktopWidth / 2;
-      const desktopTop = 5;
+      const desktopTop = Number.isFinite(quranTop)
+        ? quranTop! - (quranTop! - 5) * (desktopWidth / 376) * 0.5
+        : 45;
       svg.setAttribute('viewBox', `${desktopX.toFixed(2)} ${desktopTop} ${desktopWidth} ${desktopHeight.toFixed(2)}`);
 
       const surahHeader = svg.querySelector<SVGGElement>('#md-non-quranic-header-surah-name');
       const juzHeader = svg.querySelector<SVGGElement>('#md-non-quranic-header-juz-name');
       const pageNumber = svg.querySelector<SVGGElement>('#md-non-quranic-page-number');
-      const headerGap = 7;
       if (surahHeader && Number.isFinite(quranLeft) && Number.isFinite(quranTop)) {
         const box = surahHeader.getBBox();
         const dx = quranLeft! - box.x;
-        const currentTop = quranTop! - headerGap - box.height;
-        const labelTop = desktopTop + (currentTop - desktopTop) / 4;
+        const labelTop = desktopTop + 4;
         const dy = labelTop - box.y;
         surahHeader.setAttribute('transform', `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`);
       }
       if (juzHeader && Number.isFinite(quranRight) && Number.isFinite(quranTop)) {
         const box = juzHeader.getBBox();
         const dx = quranRight! - box.x - box.width;
-        const currentTop = quranTop! - headerGap - box.height;
-        const labelTop = desktopTop + (currentTop - desktopTop) / 4;
+        const labelTop = desktopTop + 4;
         const dy = labelTop - box.y;
         juzHeader.setAttribute('transform', `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`);
       }
@@ -269,6 +270,27 @@ export default function SvgMushafPage({
         const dy = quranBottom! + 8 - box.y;
         pageNumber.setAttribute('transform', `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`);
       }
+    }
+
+    // The source omits folios on its two opening pages. Keep a page number in
+    // every reader view without changing the source's Quran text or headers.
+    if (!svg.querySelector('#md-non-quranic-page-number')) {
+      let folio = svg.querySelector<SVGTextElement>('[data-qc-page-number]');
+      if (!folio) {
+        folio = document.createElementNS(SVG_NS, 'text');
+        folio.setAttribute('data-qc-page-number', '');
+        folio.setAttribute('text-anchor', 'middle');
+        folio.setAttribute('dominant-baseline', 'middle');
+        folio.setAttribute('font-family', 'Scheherazade New, serif');
+        folio.setAttribute('font-size', '8');
+        folio.setAttribute('fill', '#17150f');
+        folio.setAttribute('pointer-events', 'none');
+        folio.textContent = page.toLocaleString('ar-EG');
+        svg.appendChild(folio);
+      }
+      const viewBox = svg.viewBox.baseVal;
+      folio.setAttribute('x', quranCenter.toFixed(2));
+      folio.setAttribute('y', (viewBox.y + viewBox.height - 16).toFixed(2));
     }
 
     pageInner.querySelector('[data-qc-highlights]')?.remove();

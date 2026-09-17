@@ -106,7 +106,7 @@ export default function Reader({
   // simply becomes taller than the screen, which is a deliberate choice the
   // reader made rather than the default they were given.
   // Exact aspect ratio of the QUL Ligature Based SVG Mushaf viewBox.
-  const PAGE_RATIO = (compactMobile ? 488 / 255 : 547.09 / 382.68);
+  const PAGE_RATIO = compactMobile ? 1.85 : 1.56;
   const fitToHeight = height > 0 ? height / PAGE_RATIO : 820;
   const pageWidth = appLandscape
     ? Math.max(280, width)
