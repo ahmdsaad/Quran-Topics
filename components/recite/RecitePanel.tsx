@@ -107,10 +107,9 @@ function buildCorpus(verses: Verse[]): RecitationCorpus {
 function findRecitationPosition(
   spoken: string,
   corpus: RecitationCorpus,
-  nearCharacter: number | null,
 ) {
   const compactSpoken = compactRecitation(spoken);
-  if (!compactSpoken) return null;
+  if (compactSpoken.length < 8) return null;
 
   const maxLength = Math.min(56, compactSpoken.length);
   for (let length = maxLength; length >= 4; length -= 1) {
@@ -121,43 +120,27 @@ function findRecitationPosition(
       const start = corpus.compact.indexOf(needle, from);
       if (start === -1) break;
       const end = start + length - 1;
-      if (
-        nearCharacter == null
-          ? candidates.length < 3
-          : end >= nearCharacter - 70 && end <= nearCharacter + 360
-      ) {
-        candidates.push(end);
-      }
+      if (candidates.length < 3) candidates.push(end);
       from = start + 1;
-      if (nearCharacter == null && candidates.length >= 3) break;
+      if (candidates.length >= 3) break;
     }
 
     if (!candidates.length) continue;
-    if (nearCharacter == null && candidates.length > 1 && length < 14) continue;
-
-    const endCharacter = nearCharacter == null
-      ? candidates[0]
-      : candidates.sort((a, b) => {
-          const aBehind = a < nearCharacter ? 1000 : 0;
-          const bBehind = b < nearCharacter ? 1000 : 0;
-          return aBehind + Math.abs(a - nearCharacter) - (bBehind + Math.abs(b - nearCharacter));
-        })[0];
-    return { endCharacter, matchedCharacters: length };
+    if (candidates.length > 1) continue;
+    return { endCharacter: candidates[0], matchedCharacters: length };
   }
-
-  // A continuing recitation may arrive as one short word (for example "في").
-  // Match it only against the next expected Quran word, never globally, so
-  // the short utterance cannot jump to an unrelated occurrence elsewhere.
-  if (nearCharacter != null) {
-    const expected = expectedWordAfter(nearCharacter, corpus);
-    const spokenWords = recitationText(spoken).split(' ').filter(Boolean);
-    const lastWord = compactRecitation(spokenWords.at(-1) ?? '');
-    if (expected && lastWord === corpus.compact.slice(expected.compactStart, expected.compactEnd + 1)) {
-      return { endCharacter: expected.compactEnd, matchedCharacters: lastWord.length };
-    }
-  }
-
   return null;
+}
+
+function continuingMatch(spoken: string, corpus: RecitationCorpus, startCharacter: number) {
+  const heard = compactRecitation(spoken);
+  let matched = 0;
+  while (
+    matched < heard.length
+    && startCharacter + matched + 1 < corpus.compact.length
+    && heard[matched] === corpus.compact[startCharacter + matched + 1]
+  ) matched += 1;
+  return matched;
 }
 
 function expectedWordAfter(character: number, corpus: RecitationCorpus) {
@@ -198,6 +181,10 @@ export default function RecitePanel({
   const recognitionRef = useRef<RecognitionLike | null>(null);
   const shouldListen = useRef(false);
   const currentCharacter = useRef<number | null>(null);
+  const firstRevealedWord = useRef<number | null>(null);
+  const activeResultIndex = useRef(0);
+  const resultStartCharacter = useRef<number | null>(null);
+  const locatingFinalSpeech = useRef('');
   const currentWordKey = useRef('');
   const currentAccuracy = useRef<'correct' | 'error' | null>(null);
   const lastErrorSound = useRef(0);
@@ -238,27 +225,40 @@ export default function RecitePanel({
     oscillator.stop(context.currentTime + 0.21);
   }, []);
 
-  const handleTranscript = useCallback((spoken: string, isFinal: boolean) => {
+  const handleTranscript = useCallback((spoken: string, isFinal: boolean, resultIndex: number) => {
     if (!corpus) return;
     setTranscript(spoken);
-    const match = findRecitationPosition(spoken, corpus, currentCharacter.current);
-    const advancing = match && (
-      currentCharacter.current == null || match.endCharacter >= currentCharacter.current - 8
-    );
+    if (resultIndex !== activeResultIndex.current) {
+      activeResultIndex.current = resultIndex;
+      resultStartCharacter.current = currentCharacter.current;
+    }
+    const match = resultStartCharacter.current == null
+      ? findRecitationPosition(`${locatingFinalSpeech.current} ${spoken}`, corpus)
+      : (() => {
+          const matchedCharacters = continuingMatch(spoken, corpus, resultStartCharacter.current!);
+          return matchedCharacters
+            ? { endCharacter: resultStartCharacter.current! + matchedCharacters, matchedCharacters }
+            : null;
+        })();
+    const advancing = match && (currentCharacter.current == null || match.endCharacter > currentCharacter.current);
 
     if (match && advancing) {
       const matchedStart = match.endCharacter - match.matchedCharacters + 1;
-      const firstWord = corpus.charToWord[matchedStart];
+      const firstWord = firstRevealedWord.current ?? corpus.charToWord[matchedStart];
       const lastWord = corpus.charToWord[match.endCharacter];
+      firstRevealedWord.current = firstWord;
       const correctWords: string[] = [];
       for (let offset = firstWord; offset <= lastWord; offset += 1) {
         const candidate = corpus.words[offset];
-        if (candidate && candidate.compactStart >= matchedStart && candidate.compactEnd <= match.endCharacter) {
+        if (candidate) {
           correctWords.push(`${candidate.verseKey}:${candidate.wordIndex}`);
         }
       }
       if (correctWords.length) onCorrectWords(correctWords);
-      currentCharacter.current = Math.max(currentCharacter.current ?? 0, match.endCharacter);
+      currentCharacter.current = match.endCharacter;
+      if (resultStartCharacter.current == null) {
+        resultStartCharacter.current = matchedStart - 1;
+      }
       const wordOffset = corpus.charToWord[currentCharacter.current];
       const word = corpus.words[wordOffset];
       if (word) {
@@ -283,7 +283,8 @@ export default function RecitePanel({
       return;
     }
 
-    if (isFinal && currentCharacter.current != null && recitationText(spoken).length >= 2) {
+    if (isFinal && currentCharacter.current != null && recitationText(spoken).length >= 2
+      && resultStartCharacter.current === currentCharacter.current) {
       const expected = expectedWordAfter(currentCharacter.current, corpus);
       if (expected) {
         const errorPosition: RecitationPosition = {
@@ -304,6 +305,9 @@ export default function RecitePanel({
       playError();
     } else if (currentCharacter.current == null) {
       setStatus('Listening — keep reciting so I can find your place…');
+    }
+    if (isFinal && currentCharacter.current == null) {
+      locatingFinalSpeech.current = `${locatingFinalSpeech.current} ${spoken}`.trim().slice(-160);
     }
   }, [corpus, onCorrectWords, onPosition, playError]);
 
@@ -338,16 +342,22 @@ export default function RecitePanel({
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
     recognition.onstart = () => {
+      activeResultIndex.current = 0;
+      resultStartCharacter.current = currentCharacter.current;
       setListening(true);
       setStatus(currentCharacter.current == null ? 'Listening — start reciting…' : 'Listening…');
     };
     recognition.onresult = (event) => {
-      let spoken = '';
-      for (let index = 0; index < event.results.length; index += 1) {
-        spoken += ` ${event.results[index][0]?.transcript ?? ''}`;
+      // Web Speech repeats all earlier final segments in every event. Only
+      // process the current segment; otherwise the old recitation is matched
+      // against the next verse and can make the page jump or beep.
+      for (let index = activeResultIndex.current; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        handleTranscript(result[0]?.transcript?.trim() ?? '', result.isFinal, index);
+        if (!result.isFinal) break;
+        activeResultIndex.current = index + 1;
+        resultStartCharacter.current = currentCharacter.current;
       }
-      const isFinal = event.results[event.results.length - 1]?.isFinal === true;
-      handleTranscript(spoken.trim(), isFinal);
     };
     recognition.onerror = (event) => {
       if (event.error === 'no-speech') {
@@ -401,12 +411,17 @@ export default function RecitePanel({
 
   const reset = () => {
     currentCharacter.current = null;
+    firstRevealedWord.current = null;
+    locatingFinalSpeech.current = '';
+    activeResultIndex.current = 0;
+    resultStartCharacter.current = null;
     currentWordKey.current = '';
     currentAccuracy.current = null;
     setPosition(null);
     setTranscript('');
     setStatus(listening ? 'Listening — start reciting…' : 'Ready to listen');
     onReset();
+    if (shouldListen.current) recognitionRef.current?.abort();
   };
 
   return (
@@ -472,7 +487,7 @@ export default function RecitePanel({
       ) : <div className="scroll-y flex-1 space-y-4 p-4">
         {!compact ? (
           <div className="rounded-lg border p-3 text-xs leading-relaxed" style={{ borderColor: 'var(--border)', color: 'var(--ink-soft)' }}>
-            This mode follows recognized Quran words. It can flag a likely word mismatch, but it does not grade tajwīd or subtle pronunciation and may occasionally mishear speech.
+            I find your starting place once, then follow the next words and verses in order. Reset to start somewhere else. Vowel marks and tajwīd are not graded; speech recognition may still mishear a word.
           </div>
         ) : null}
 
