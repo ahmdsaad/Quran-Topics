@@ -63,7 +63,7 @@ export default function App() {
   const [reciteJumpToken, setReciteJumpToken] = useState(0);
   const [recitationPosition, setRecitationPosition] = useState<RecitationPosition | null>(null);
   const [revealOnly, setRevealOnly] = useState(false);
-  const [revealedRecitationWords, setRevealedRecitationWords] = useState<ReadonlySet<string>>(() => new Set());
+  const [revealedRecitationProgress, setRevealedRecitationProgress] = useState<ReadonlyMap<string, number>>(() => new Map());
   const recitePageRef = useRef(1);
   const [dual, setDual] = useState(false);
 
@@ -325,10 +325,17 @@ export default function App() {
         ? { from: selectionAnchor, to: selectionAnchor }
         : null;
 
-  const handleCorrectRecitationWords = useCallback((keys: string[]) => {
-    setRevealedRecitationWords((previous) => {
-      if (keys.every((key) => previous.has(key))) return previous;
-      return new Set([...previous, ...keys]);
+  const handleRecitationProgress = useCallback((progress: Record<string, number>) => {
+    setRevealedRecitationProgress((previous) => {
+      const next = new Map(previous);
+      let changed = false;
+      for (const [key, characters] of Object.entries(progress)) {
+        if (characters > (next.get(key) ?? 0)) {
+          next.set(key, characters);
+          changed = true;
+        }
+      }
+      return changed ? next : previous;
     });
   }, []);
 
@@ -400,7 +407,7 @@ export default function App() {
 
   const resetRecitation = () => {
     setRecitationPosition(null);
-    setRevealedRecitationWords(new Set());
+    setRevealedRecitationProgress(new Map());
   };
 
   const readerPane = (
@@ -432,11 +439,12 @@ export default function App() {
         ? {
             verseKey: recitationPosition.verseKey,
             wordIndex: recitationPosition.wordIndex,
+            characterEndInVerse: recitationPosition.characterEndInVerse,
             accuracy: recitationPosition.accuracy,
           }
         : null}
       revealOnly={revealOnly}
-      revealedWords={revealedRecitationWords}
+      revealedProgress={revealedRecitationProgress}
       range={null}
       onVerseTap={handleVerseTap}
       onRangeStart={startRange}
@@ -457,7 +465,7 @@ export default function App() {
       meta={meta}
       active={mobilePane === 'recite'}
       onPosition={handleRecitationPosition}
-      onCorrectWords={handleCorrectRecitationWords}
+      onProgress={handleRecitationProgress}
       onReset={resetRecitation}
       revealOnly={revealOnly}
       onRevealOnlyChange={setRevealOnly}
@@ -470,7 +478,7 @@ export default function App() {
       compact
       active={mobilePane === 'recite'}
       onPosition={handleRecitationPosition}
-      onCorrectWords={handleCorrectRecitationWords}
+      onProgress={handleRecitationProgress}
       onReset={resetRecitation}
       revealOnly={revealOnly}
       onRevealOnlyChange={setRevealOnly}

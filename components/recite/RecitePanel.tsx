@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Meta, Verse } from '@/lib/types';
 import { db } from '@/lib/db/schema';
 import { normalizeArabic } from '@/lib/search/normalize';
+import { compactRecitation } from '@/lib/recite/normalize';
 
 export interface RecitationPosition {
   verseKey: string;
@@ -13,11 +14,13 @@ export interface RecitationPosition {
   surah: number;
   ayah: number;
   accuracy: 'correct' | 'error';
+  characterEndInVerse: number;
 }
 
-interface CorpusWord extends Omit<RecitationPosition, 'accuracy'> {
+interface CorpusWord extends Omit<RecitationPosition, 'accuracy' | 'characterEndInVerse'> {
   compactStart: number;
   compactEnd: number;
+  verseCompactStart: number;
 }
 
 interface RecitationCorpus {
@@ -66,18 +69,13 @@ const recitationText = (value: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
-// Speech services usually transcribe modern Arabic spelling while the Mushaf
-// corpus preserves Quranic orthography (for example العالمين vs العلمين after
-// diacritics are removed). Ignore spacing and alif insertion for matching only;
-// the displayed Quran text remains untouched.
-const compactRecitation = (value: string) => recitationText(value).replace(/[\sا]/g, '');
-
 function buildCorpus(verses: Verse[]): RecitationCorpus {
   let compact = '';
   const charToWord: number[] = [];
   const words: CorpusWord[] = [];
 
   for (const verse of verses) {
+    const verseCompactStart = compact.length;
     const tokens = recitationText(verse.simple || verse.text).split(' ').filter(Boolean);
     tokens.forEach((word, index) => {
       const compactWord = compactRecitation(word);
@@ -97,6 +95,7 @@ function buildCorpus(verses: Verse[]): RecitationCorpus {
         ayah: verse.ayah,
         compactStart,
         compactEnd: compact.length - 1,
+        verseCompactStart,
       });
     });
   }
@@ -156,7 +155,7 @@ export default function RecitePanel({
   compact = false,
   active = true,
   onPosition,
-  onCorrectWords,
+  onProgress,
   onReset,
   onClose,
   revealOnly = false,
@@ -166,7 +165,7 @@ export default function RecitePanel({
   compact?: boolean;
   active?: boolean;
   onPosition: (position: RecitationPosition) => void;
-  onCorrectWords: (keys: string[]) => void;
+  onProgress: (progress: Record<string, number>) => void;
   onReset: () => void;
   onClose?: () => void;
   revealOnly?: boolean;
@@ -247,14 +246,17 @@ export default function RecitePanel({
       const firstWord = firstRevealedWord.current ?? corpus.charToWord[matchedStart];
       const lastWord = corpus.charToWord[match.endCharacter];
       firstRevealedWord.current = firstWord;
-      const correctWords: string[] = [];
+      const progress: Record<string, number> = {};
       for (let offset = firstWord; offset <= lastWord; offset += 1) {
         const candidate = corpus.words[offset];
         if (candidate) {
-          correctWords.push(`${candidate.verseKey}:${candidate.wordIndex}`);
+          progress[candidate.verseKey] = Math.max(
+            progress[candidate.verseKey] ?? 0,
+            Math.min(match.endCharacter, candidate.compactEnd) - candidate.verseCompactStart + 1,
+          );
         }
       }
-      if (correctWords.length) onCorrectWords(correctWords);
+      if (Object.keys(progress).length) onProgress(progress);
       currentCharacter.current = match.endCharacter;
       if (resultStartCharacter.current == null) {
         resultStartCharacter.current = matchedStart - 1;
@@ -270,6 +272,7 @@ export default function RecitePanel({
           surah: word.surah,
           ayah: word.ayah,
           accuracy: 'correct',
+          characterEndInVerse: match.endCharacter - word.verseCompactStart + 1,
         };
         const wordKey = `${word.verseKey}:${word.wordIndex}`;
         if (wordKey !== currentWordKey.current || currentAccuracy.current === 'error') {
@@ -295,6 +298,7 @@ export default function RecitePanel({
           surah: expected.surah,
           ayah: expected.ayah,
           accuracy: 'error',
+          characterEndInVerse: expected.compactStart - expected.verseCompactStart + 1,
         };
         currentWordKey.current = `${expected.verseKey}:${expected.wordIndex}:error`;
         currentAccuracy.current = 'error';
@@ -309,7 +313,7 @@ export default function RecitePanel({
     if (isFinal && currentCharacter.current == null) {
       locatingFinalSpeech.current = `${locatingFinalSpeech.current} ${spoken}`.trim().slice(-160);
     }
-  }, [corpus, onCorrectWords, onPosition, playError]);
+  }, [corpus, onProgress, onPosition, playError]);
 
   const stop = useCallback(() => {
     shouldListen.current = false;

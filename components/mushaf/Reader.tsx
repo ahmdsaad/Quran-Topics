@@ -12,9 +12,9 @@ interface Props {
   markers: Map<string, VerseMarker>;
   selectedVerse: string | null;
   searchedVerse: string | null;
-  recitingWord?: { verseKey: string; wordIndex: number; accuracy: 'correct' | 'error' } | null;
+  recitingWord?: { verseKey: string; wordIndex: number; characterEndInVerse: number; accuracy: 'correct' | 'error' } | null;
   revealOnly?: boolean;
-  revealedWords?: ReadonlySet<string>;
+  revealedProgress?: ReadonlyMap<string, number>;
   range: { from: string; to: string } | null;
   onVerseTap: (verseKey: string, el: HTMLElement, additive: boolean) => void;
   onRangeStart: (verseKey: string) => void;
@@ -44,7 +44,7 @@ export default function Reader({
   searchedVerse,
   recitingWord = null,
   revealOnly = false,
-  revealedWords,
+  revealedProgress,
   range,
   onVerseTap,
   onRangeStart,
@@ -302,7 +302,7 @@ export default function Reader({
                 searchedVerse={searchedVerse}
                 recitingWord={recitingWord}
                 revealOnly={revealOnly}
-                revealedWords={revealedWords}
+                revealedProgress={revealedProgress}
                 range={range}
                 onVerseTap={onVerseTap}
                 onRangeStart={onRangeStart}
