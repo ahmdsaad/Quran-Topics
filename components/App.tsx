@@ -464,24 +464,17 @@ export default function App() {
     />
   );
 
-  const mobileRecitePane = (
-    <div className="relative h-full">
-      {reciteReaderPane}
-      <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center lg:hidden">
-        <div className="pointer-events-auto">
-          <RecitePanel
-            meta={meta}
-            compact
-            active={mobilePane === 'recite'}
-            onPosition={handleRecitationPosition}
-            onCorrectWords={handleCorrectRecitationWords}
-            onReset={resetRecitation}
-            revealOnly={revealOnly}
-            onRevealOnlyChange={setRevealOnly}
-          />
-        </div>
-      </div>
-    </div>
+  const mobileReciteControls = (
+    <RecitePanel
+      meta={meta}
+      compact
+      active={mobilePane === 'recite'}
+      onPosition={handleRecitationPosition}
+      onCorrectWords={handleCorrectRecitationWords}
+      onReset={resetRecitation}
+      revealOnly={revealOnly}
+      onRevealOnlyChange={setRevealOnly}
+    />
   );
 
   const openSearchPage = (page: number, key: string | null = null) => {
@@ -740,6 +733,7 @@ export default function App() {
                 ? recitePage
                 : currentPage}
           dual={dual}
+          reciteControls={dual ? undefined : mobileReciteControls}
           onJump={(page) => {
             if (mobilePane === 'search') {
               openSearchPage(page);
@@ -864,7 +858,7 @@ export default function App() {
                 {marksPane}
               </div>
               <div className={mobilePane === 'recite' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
-                {mobileRecitePane}
+                {reciteReaderPane}
               </div>
               {mobilePane !== 'reader' && mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks' && mobilePane !== 'recite' ? (
                 <div className="h-full" style={{ background: 'var(--surface)' }}>

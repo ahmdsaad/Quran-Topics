@@ -50,7 +50,7 @@ function loadGoogleIdentity() {
   return googleScript;
 }
 
-export default function AccountButton() {
+export default function AccountButton({ compact = false }: { compact?: boolean }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -140,7 +140,12 @@ export default function AccountButton() {
           });
         },
       });
-      window.google.accounts.id.renderButton(parent, {
+      window.google.accounts.id.renderButton(parent, compact ? {
+        type: 'icon',
+        theme: 'outline',
+        size: 'medium',
+        shape: 'circle',
+      } : {
         type: 'standard',
         theme: 'outline',
         size: 'medium',
@@ -154,18 +159,20 @@ export default function AccountButton() {
       setAuthError(error instanceof Error ? error.message : 'Could not load Google sign-in.');
     });
     return () => { active = false; };
-  }, [configured, loading, user]);
+  }, [configured, loading, user, compact]);
 
   if (!configured) {
-    return <button className="btn btn-ghost px-2 text-xs" disabled title="Add Supabase environment variables to enable Google login">Google login</button>;
+    return <button className="btn btn-ghost px-2 text-xs" disabled title="Add Supabase environment variables to enable Google login">{compact ? <GoogleMark /> : 'Google login'}</button>;
   }
   if (!user) {
     return (
       <div className="relative">
         {loading ? (
-          <button className="btn px-2 text-xs" disabled><GoogleMark />Checking…</button>
+          <button className="btn px-2 text-xs" disabled><GoogleMark />{compact ? null : 'Checking…'}</button>
         ) : (
-          <div ref={googleButtonRef} className="h-8 min-w-28 overflow-hidden rounded-full" />
+          <div ref={googleButtonRef} className={compact
+            ? 'h-8 w-10 overflow-hidden rounded-full'
+            : 'h-8 min-w-28 overflow-hidden rounded-full'} title="Sign in with Google" />
         )}
         {authError ? (
           <div className="absolute end-0 top-full z-[90] mt-1 w-64 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 shadow-lg">

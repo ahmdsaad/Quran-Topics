@@ -17,6 +17,7 @@ export default function TopBar({
   onJump,
   scale,
   onScale,
+  reciteControls,
 }: {
   meta: Meta;
   currentPage: number;
@@ -24,6 +25,7 @@ export default function TopBar({
   onJump: (page: number) => void;
   scale: number;
   onScale: (v: number) => void;
+  reciteControls?: React.ReactNode;
 }) {
   const [navOpen, setNavOpen] = useState(false);
   const [exporting, setExporting] = useState<'docx' | 'xlsx' | null>(null);
@@ -65,7 +67,7 @@ export default function TopBar({
   return (
     <>
       <header
-        className="flex shrink-0 items-center gap-2 border-b px-3 py-2"
+        className="relative flex shrink-0 items-center gap-2 border-b px-3 py-2"
         style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
       >
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
@@ -104,8 +106,18 @@ export default function TopBar({
               {exporting === 'xlsx' ? 'Exporting…' : 'Excel'}
             </button>
           </div>
-          <AccountButton />
+          <AccountButton compact={!dual && mobilePane === 'recite'} />
         </div>
+
+        {reciteControls ? (
+          <div
+            className={mobilePane === 'recite'
+              ? 'absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2'
+              : 'hidden'}
+          >
+            {reciteControls}
+          </div>
+        ) : null}
 
         <button className="btn btn-ghost shrink-0 gap-2 px-2" onClick={() => setNavOpen(true)}
           aria-label="Jump to surah, page or juz">
