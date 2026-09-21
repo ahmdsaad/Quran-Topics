@@ -5,6 +5,7 @@ import type {
   CategoryVerse,
   Note,
   HiddenVerseState,
+  HiddenPageState,
   ReadingState,
   Settings,
   SyncEnvelope,
@@ -693,8 +694,25 @@ export async function getReadingState(): Promise<ReadingState | undefined> {
 export async function getHiddenVerseKeys(): Promise<string[]> {
   const states = await db().readingState.where('id').startsWith('hidden:').toArray();
   return states
-    .filter((state): state is HiddenVerseState => state.id !== 'current' && state.hidden)
+    .filter((state): state is HiddenVerseState => state.id.startsWith('hidden:') && 'hidden' in state && state.hidden)
     .map((state) => state.verseKey);
+}
+
+export async function getHiddenPageState(): Promise<HiddenPageState | undefined> {
+  const state = await db().readingState.get('hidden-page');
+  return state?.id === 'hidden-page' ? state : undefined;
+}
+
+export async function saveHiddenPageState(page: number) {
+  const d = db();
+  const current = await getHiddenPageState();
+  if (current?.page === page) return;
+  const state: HiddenPageState = { id: 'hidden-page', page, updatedAt: Date.now() };
+  await d.transaction('rw', d.readingState, d.outbox, async () => {
+    await d.readingState.put(state);
+    await log('readingState', state.id, 'put', state);
+  });
+  window.dispatchEvent(new CustomEvent('quran-sync-requested'));
 }
 
 export async function setVerseHidden(verseKey: string, hidden: boolean) {

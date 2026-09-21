@@ -136,6 +136,13 @@ export interface HiddenVerseState {
   updatedAt: number;
 }
 
+/** Current page of the separate Hidden Quran workspace. */
+export interface HiddenPageState {
+  id: 'hidden-page';
+  page: number;
+  updatedAt: number;
+}
+
 export interface Settings {
   id: 'current';
   theme: 'light' | 'dark' | 'sepia';

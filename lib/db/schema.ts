@@ -6,6 +6,7 @@ import type {
   Note,
   OutboxEntry,
   HiddenVerseState,
+  HiddenPageState,
   ReadingState,
   Settings,
   Surah,
@@ -29,7 +30,7 @@ export class QuranDB extends Dexie {
   categoryVerses!: Table<CategoryVerse, string>;
   notes!: Table<Note, string>;
   bookmarks!: Table<Bookmark, string>;
-  readingState!: Table<ReadingState | HiddenVerseState, string>;
+  readingState!: Table<ReadingState | HiddenVerseState | HiddenPageState, string>;
   settings!: Table<Settings, string>;
 
   verseMarkers!: Table<VerseMarker, string>;

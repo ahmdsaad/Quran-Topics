@@ -19,7 +19,7 @@ import AutoUpdate from '@/components/auth/AutoUpdate';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { syncNow } from '@/lib/supabase/sync';
 import { ensureCorpus, loadMeta } from '@/lib/db/bootstrap';
-import { allMarkers, getHiddenVerseKeys, getReadingState, getSettings, rebuildMarkers, setVerseHidden } from '@/lib/db/repo';
+import { allMarkers, getHiddenPageState, getHiddenVerseKeys, getReadingState, getSettings, rebuildMarkers, saveHiddenPageState, setVerseHidden } from '@/lib/db/repo';
 import { db } from '@/lib/db/schema';
 import type { Meta, TranslationLanguage, VerseMarker } from '@/lib/types';
 import { useUI } from '@/lib/store';
@@ -103,7 +103,9 @@ export default function App() {
             console.error('[initial reading sync]', syncError);
           }
         }
-        const [m, rs, st] = await Promise.all([loadMeta(), getReadingState(), getSettings()]);
+        const [m, rs, st, hiddenState] = await Promise.all([
+          loadMeta(), getReadingState(), getSettings(), getHiddenPageState(),
+        ]);
         if (!live) return;
         setMeta(m);
         const bootUrl = new URL(location.href);
@@ -112,7 +114,7 @@ export default function App() {
         const page = hasValidDeepPage ? deep : (rs?.page ?? 1);
         setInitialPage(page);
         setCurrentPage(page);
-        setHiddenPage(page);
+        setHiddenPage(hiddenState?.page ?? page);
         // The updater uses `page` as a one-time, synchronous hand-off across a
         // mobile refresh. Remove it after consuming it so a later launch can
         // resume from whichever device most recently updated the cloud state.
@@ -290,6 +292,18 @@ export default function App() {
     () => new Set(hiddenVerseKeys ?? []),
     [hiddenVerseKeys],
   );
+  const syncedHiddenPage = useLiveQuery(
+    () => (phase === 'ready' ? getHiddenPageState() : Promise.resolve(undefined)),
+    [phase],
+  );
+  useEffect(() => {
+    if (!syncedHiddenPage?.page) return;
+    setHiddenPage((current) => {
+      if (current === syncedHiddenPage.page) return current;
+      setHiddenJumpToken((token) => token + 1);
+      return syncedHiddenPage.page;
+    });
+  }, [syncedHiddenPage?.page, syncedHiddenPage?.updatedAt]);
 
   // One tap does one of three things, in priority order:
   //   1. shift-click, or a tap while a range is pending -> close the range
@@ -430,7 +444,12 @@ export default function App() {
       scale={scale}
       persistReading={false}
       active={mobilePane === 'hidden'}
-      onPageChange={setHiddenPage}
+      onPageChange={(page) => {
+        setHiddenPage(page);
+        void saveHiddenPageState(page).catch((error) => {
+          console.error('[hidden page]', error);
+        });
+      }}
     />
   );
 

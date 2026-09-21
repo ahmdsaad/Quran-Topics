@@ -41,8 +41,11 @@ export default function SyncManager() {
       };
       await run();
       if (disposed || activeUserId !== user.id) return;
-      const timer = window.setInterval(() => { void restoreLatestPage(); }, 15_000);
+      // Realtime is normally instant. A short visible-app poll is the fallback
+      // for mobile WebViews that suspend or silently drop websocket channels.
+      const timer = window.setInterval(() => { void restoreLatestPage(); }, 5_000);
       window.addEventListener('online', run);
+      window.addEventListener('focus', restoreLatestPage);
       const onReadingStateSaved = () => { void run(); };
       const onSyncRequested = () => { void run(); };
       const onPageHide = () => { void run(); };
@@ -75,6 +78,7 @@ export default function SyncManager() {
       stopActive = () => {
         window.clearInterval(timer);
         window.removeEventListener('online', run);
+        window.removeEventListener('focus', restoreLatestPage);
         window.removeEventListener('quran-reading-state-saved', onReadingStateSaved);
         window.removeEventListener('quran-sync-requested', onSyncRequested);
         window.removeEventListener('pagehide', onPageHide);
