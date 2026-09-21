@@ -12,7 +12,7 @@ interface Props {
   markers: Map<string, VerseMarker>;
   selectedVerse: string | null;
   searchedVerse: string | null;
-  recitingWord?: { verseKey: string; wordIndex: number; characterEndInVerse: number; accuracy: 'correct' | 'error' } | null;
+  recitingWord?: { verseKey: string; wordIndex: number; characterEndInVerse: number } | null;
   revealOnly?: boolean;
   revealedProgress?: ReadonlyMap<string, number>;
   range: { from: string; to: string } | null;

@@ -155,13 +155,6 @@ body {
   stroke-opacity: 0.72;
 }
 
-.svg-reciting-word--error {
-  fill: #ff6b6b;
-  fill-opacity: 0.58;
-  stroke: #c62828;
-  stroke-opacity: 0.9;
-}
-
 .svg-verse-highlight--noted {
   fill: #86d69b;
   fill-opacity: 0.36;

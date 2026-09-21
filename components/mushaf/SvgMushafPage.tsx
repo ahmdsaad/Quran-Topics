@@ -13,7 +13,7 @@ interface Props {
   markers: Map<string, VerseMarker>;
   selectedVerse: string | null;
   searchedVerse: string | null;
-  recitingWord?: { verseKey: string; wordIndex: number; characterEndInVerse: number; accuracy: 'correct' | 'error' } | null;
+  recitingWord?: { verseKey: string; wordIndex: number; characterEndInVerse: number } | null;
   revealOnly?: boolean;
   revealedProgress?: ReadonlyMap<string, number>;
   range: { from: string; to: string } | null;
@@ -355,10 +355,7 @@ export default function SvgMushafPage({
         wordHighlight.setAttribute('width', String(box.width + 3.6));
         wordHighlight.setAttribute('height', String(box.height + 3));
         wordHighlight.setAttribute('rx', '2');
-        wordHighlight.setAttribute(
-          'class',
-          `svg-reciting-word svg-reciting-word--${recitingWord.accuracy}`,
-        );
+        wordHighlight.setAttribute('class', 'svg-reciting-word svg-reciting-word--correct');
         layer.appendChild(wordHighlight);
       }
     }
@@ -493,7 +490,7 @@ export default function SvgMushafPage({
       className="svg-mushaf-page"
       data-page={page}
       data-reciting-word={recitingWord
-        ? `${recitingWord.verseKey}:${recitingWord.wordIndex}:${recitingWord.accuracy}`
+        ? `${recitingWord.verseKey}:${recitingWord.wordIndex}`
         : undefined}
       onPointerMove={(event) => {
         if (event.pointerType === 'mouse') {

@@ -13,11 +13,10 @@ export interface RecitationPosition {
   word: string;
   surah: number;
   ayah: number;
-  accuracy: 'correct' | 'error';
   characterEndInVerse: number;
 }
 
-interface CorpusWord extends Omit<RecitationPosition, 'accuracy' | 'characterEndInVerse'> {
+interface CorpusWord extends Omit<RecitationPosition, 'characterEndInVerse'> {
   compactStart: number;
   compactEnd: number;
   verseCompactStart: number;
@@ -142,14 +141,6 @@ function continuingMatch(spoken: string, corpus: RecitationCorpus, startCharacte
   return matched;
 }
 
-function expectedWordAfter(character: number, corpus: RecitationCorpus) {
-  const currentOffset = corpus.charToWord[Math.min(character, corpus.charToWord.length - 1)];
-  const current = corpus.words[currentOffset];
-  if (!current) return null;
-  const expectedOffset = character >= current.compactEnd ? currentOffset + 1 : currentOffset;
-  return corpus.words[Math.min(expectedOffset, corpus.words.length - 1)] ?? null;
-}
-
 export default function RecitePanel({
   meta,
   compact = false,
@@ -185,9 +176,6 @@ export default function RecitePanel({
   const resultStartCharacter = useRef<number | null>(null);
   const locatingFinalSpeech = useRef('');
   const currentWordKey = useRef('');
-  const currentAccuracy = useRef<'correct' | 'error' | null>(null);
-  const lastErrorSound = useRef(0);
-  const audioContext = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -203,26 +191,6 @@ export default function RecitePanel({
     () => position ? meta.surahs.find((item) => item.number === position.surah) : null,
     [meta.surahs, position],
   );
-
-  const playError = useCallback(() => {
-    if (Date.now() - lastErrorSound.current < 1200) return;
-    lastErrorSound.current = Date.now();
-    const AudioContextClass = window.AudioContext
-      || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const context = audioContext.current ?? new AudioContextClass();
-    audioContext.current = context;
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = 'square';
-    oscillator.frequency.setValueAtTime(185, context.currentTime);
-    gain.gain.setValueAtTime(0.0001, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.2);
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start();
-    oscillator.stop(context.currentTime + 0.21);
-  }, []);
 
   const handleTranscript = useCallback((spoken: string, isFinal: boolean, resultIndex: number) => {
     if (!corpus) return;
@@ -271,13 +239,11 @@ export default function RecitePanel({
           word: word.word,
           surah: word.surah,
           ayah: word.ayah,
-          accuracy: 'correct',
           characterEndInVerse: match.endCharacter - word.verseCompactStart + 1,
         };
         const wordKey = `${word.verseKey}:${word.wordIndex}`;
-        if (wordKey !== currentWordKey.current || currentAccuracy.current === 'error') {
+        if (wordKey !== currentWordKey.current) {
           currentWordKey.current = wordKey;
-          currentAccuracy.current = 'correct';
           setPosition(nextPosition);
           onPosition(nextPosition);
         }
@@ -286,34 +252,13 @@ export default function RecitePanel({
       return;
     }
 
-    if (isFinal && currentCharacter.current != null && recitationText(spoken).length >= 2
-      && resultStartCharacter.current === currentCharacter.current) {
-      const expected = expectedWordAfter(currentCharacter.current, corpus);
-      if (expected) {
-        const errorPosition: RecitationPosition = {
-          verseKey: expected.verseKey,
-          page: expected.page,
-          wordIndex: expected.wordIndex,
-          word: expected.word,
-          surah: expected.surah,
-          ayah: expected.ayah,
-          accuracy: 'error',
-          characterEndInVerse: expected.compactStart - expected.verseCompactStart + 1,
-        };
-        currentWordKey.current = `${expected.verseKey}:${expected.wordIndex}:error`;
-        currentAccuracy.current = 'error';
-        setPosition(errorPosition);
-        onPosition(errorPosition);
-      }
-      setStatus('Please check the last words and repeat');
-      playError();
-    } else if (currentCharacter.current == null) {
+    if (currentCharacter.current == null) {
       setStatus('Listening — keep reciting so I can find your place…');
     }
     if (isFinal && currentCharacter.current == null) {
       locatingFinalSpeech.current = `${locatingFinalSpeech.current} ${spoken}`.trim().slice(-160);
     }
-  }, [corpus, onProgress, onPosition, playError]);
+  }, [corpus, onProgress, onPosition]);
 
   const stop = useCallback(() => {
     shouldListen.current = false;
@@ -393,12 +338,6 @@ export default function RecitePanel({
 
     shouldListen.current = true;
     recognitionRef.current = recognition;
-    const AudioContextClass = window.AudioContext
-      || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (AudioContextClass) {
-      audioContext.current ??= new AudioContextClass();
-      void audioContext.current.resume();
-    }
     try {
       recognition.start();
     } catch {
@@ -410,7 +349,6 @@ export default function RecitePanel({
   useEffect(() => () => {
     shouldListen.current = false;
     recognitionRef.current?.abort();
-    void audioContext.current?.close();
   }, []);
 
   const reset = () => {
@@ -420,7 +358,6 @@ export default function RecitePanel({
     activeResultIndex.current = 0;
     resultStartCharacter.current = null;
     currentWordKey.current = '';
-    currentAccuracy.current = null;
     setPosition(null);
     setTranscript('');
     setStatus(listening ? 'Listening — start reciting…' : 'Ready to listen');

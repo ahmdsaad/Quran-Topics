@@ -440,7 +440,6 @@ export default function App() {
             verseKey: recitationPosition.verseKey,
             wordIndex: recitationPosition.wordIndex,
             characterEndInVerse: recitationPosition.characterEndInVerse,
-            accuracy: recitationPosition.accuracy,
           }
         : null}
       revealOnly={revealOnly}
