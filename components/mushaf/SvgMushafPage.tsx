@@ -5,7 +5,6 @@ import { useDraggable } from '@dnd-kit/core';
 import type { Meta, VerseMarker } from '@/lib/types';
 import { verseKeyInRange } from '@/lib/mushaf/verseRange';
 import { useDrag } from '@/components/dnd/DragLayer';
-import { compactRecitation } from '@/lib/recite/normalize';
 
 interface Props {
   page: number;
@@ -13,9 +12,7 @@ interface Props {
   markers: Map<string, VerseMarker>;
   selectedVerse: string | null;
   searchedVerse: string | null;
-  recitingWord?: { verseKey: string; wordIndex: number; characterEndInVerse: number } | null;
-  revealOnly?: boolean;
-  revealedProgress?: ReadonlyMap<string, number>;
+  dimmedVerses?: ReadonlySet<string>;
   range: { from: string; to: string } | null;
   onVerseTap: (verseKey: string, el: HTMLElement, additive: boolean) => void;
   onRangeStart: (verseKey: string) => void;
@@ -26,7 +23,7 @@ interface Props {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export default function SvgMushafPage({
-  page, meta, markers, selectedVerse, searchedVerse, recitingWord = null, revealOnly = false, revealedProgress, range, onVerseTap, onRangeStart, compactMobile = false, active = true,
+  page, meta, markers, selectedVerse, searchedVerse, dimmedVerses, range, onVerseTap, onRangeStart, compactMobile = false, active = true,
 }: Props) {
   const [markup, setMarkup] = useState('');
   const [error, setError] = useState(false);
@@ -305,14 +302,7 @@ export default function SvgMushafPage({
     const groups = Array.from(
       pageInner.querySelectorAll<SVGGElement>('g[data-surah][data-aya][data-line-number]')
     );
-    pageInner.querySelectorAll<SVGGElement>('g[data-type="surah-name"], g[data-type="bismillah"]')
-      .forEach((group) => {
-        if (revealOnly) group.setAttribute('visibility', 'hidden');
-        else group.removeAttribute('visibility');
-      });
     const segments = new Map<string, { key: string; boxes: DOMRect[]; marker?: VerseMarker }>();
-    const characterOffsets = new Map<string, number>();
-    const characterRanges = new WeakMap<SVGGElement, { start: number; end: number }>();
 
     for (const group of groups) {
       const surah = Number(group.dataset.surah);
@@ -320,44 +310,11 @@ export default function SvgMushafPage({
       const key = `${surah}:${ayah}`;
       group.dataset.verseKey = key;
       group.classList.add('svg-mushaf-word');
-      const start = characterOffsets.get(key) ?? 0;
-      const end = start + compactRecitation(group.dataset.hafs ?? group.dataset.imlaey ?? '').length;
-      characterOffsets.set(key, end);
-      characterRanges.set(group, { start, end });
-      if (revealOnly) {
-        const revealed = revealedProgress?.get(key) ?? 0;
-        const visible = group.dataset.type === 'aya-mark'
-          ? revealed >= start && revealed > 0
-          : revealed > start;
-        group.setAttribute('visibility', visible ? 'visible' : 'hidden');
-      } else {
-        group.removeAttribute('visibility');
-      }
+      group.style.opacity = dimmedVerses?.has(key) ? '0.25' : '';
       const segmentKey = `${key}-${group.dataset.lineNumber}`;
       const current = segments.get(segmentKey) ?? { key, boxes: [], marker: markers.get(key) };
       current.boxes.push(group.getBBox() as unknown as DOMRect);
       segments.set(segmentKey, current);
-    }
-
-    if (recitingWord) {
-      for (const group of groups) {
-        // The SVG pads these values ("001:002") while application verse keys
-        // use canonical numbers ("1:2"). Normalize before comparing.
-        const key = `${Number(group.dataset.surah)}:${Number(group.dataset.aya)}`;
-        const range = characterRanges.get(group);
-        if (key !== recitingWord.verseKey || !range
-          || recitingWord.characterEndInVerse <= range.start
-          || recitingWord.characterEndInVerse > range.end) continue;
-        const box = group.getBBox();
-        const wordHighlight = document.createElementNS(SVG_NS, 'rect');
-        wordHighlight.setAttribute('x', String(box.x - 1.8));
-        wordHighlight.setAttribute('y', String(box.y - 1.5));
-        wordHighlight.setAttribute('width', String(box.width + 3.6));
-        wordHighlight.setAttribute('height', String(box.height + 3));
-        wordHighlight.setAttribute('rx', '2');
-        wordHighlight.setAttribute('class', 'svg-reciting-word svg-reciting-word--correct');
-        layer.appendChild(wordHighlight);
-      }
     }
 
     for (const segment of segments.values()) {
@@ -397,7 +354,7 @@ export default function SvgMushafPage({
       hitArea.setAttribute('focusable', 'false');
       hitLayer.appendChild(hitArea);
 
-      if (kind && !revealOnly) {
+      if (kind) {
         const rect = document.createElementNS(SVG_NS, 'rect');
         rect.setAttribute('x', String(left - 1.5));
         rect.setAttribute('y', String(top - 1));
@@ -411,7 +368,7 @@ export default function SvgMushafPage({
         layer.appendChild(rect);
       }
 
-      if (segment.marker?.hasBookmark && !selected && !revealOnly) {
+      if (segment.marker?.hasBookmark && !selected) {
         const underline = document.createElementNS(SVG_NS, 'line');
         underline.setAttribute('x1', String(left));
         underline.setAttribute('x2', String(right));
@@ -422,7 +379,7 @@ export default function SvgMushafPage({
         layer.appendChild(underline);
       }
 
-      if (qa && !revealOnly) {
+      if (qa) {
         const qaUnderline = document.createElementNS(SVG_NS, 'line');
         qaUnderline.setAttribute('x1', String(left));
         qaUnderline.setAttribute('x2', String(right));
@@ -434,7 +391,7 @@ export default function SvgMushafPage({
     }
     pageInner.insertBefore(layer, pageInner.firstChild);
     pageInner.appendChild(hitLayer);
-  }, [markup, markers, hoverKey, isSelected, categoryToneByVerse, compactMobile, searchedVerse, recitingWord, revealOnly, revealedProgress, active]);
+  }, [markup, markers, hoverKey, isSelected, categoryToneByVerse, compactMobile, searchedVerse, dimmedVerses, active]);
 
   const verseTargetAt = (target: EventTarget | null) =>
     (target as Element | null)?.closest<SVGElement>('[data-verse-key]') ?? null;
@@ -489,9 +446,6 @@ export default function SvgMushafPage({
       ref={setHostRef}
       className="svg-mushaf-page"
       data-page={page}
-      data-reciting-word={recitingWord
-        ? `${recitingWord.verseKey}:${recitingWord.wordIndex}`
-        : undefined}
       onPointerMove={(event) => {
         if (event.pointerType === 'mouse') {
           setHoverKey(verseTargetAt(event.target)?.dataset.verseKey ?? null);

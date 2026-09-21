@@ -17,7 +17,6 @@ export default function TopBar({
   onJump,
   scale,
   onScale,
-  reciteControls,
 }: {
   meta: Meta;
   currentPage: number;
@@ -25,7 +24,6 @@ export default function TopBar({
   onJump: (page: number) => void;
   scale: number;
   onScale: (v: number) => void;
-  reciteControls?: React.ReactNode;
 }) {
   const [navOpen, setNavOpen] = useState(false);
   const [exporting, setExporting] = useState<'docx' | 'xlsx' | null>(null);
@@ -82,8 +80,8 @@ export default function TopBar({
             <TabBtn active={mobilePane === 'qa'} onClick={() => setMobilePane('qa')}>
               Q/A
             </TabBtn>
-            <TabBtn active={mobilePane === 'recite'} onClick={() => setMobilePane('recite')}>
-              Test recitation
+            <TabBtn active={mobilePane === 'hidden'} onClick={() => setMobilePane('hidden')}>
+              Hidden
             </TabBtn>
             <TabBtn active={mobilePane === 'search'} onClick={() => setMobilePane('search')}>
               Search
@@ -106,18 +104,8 @@ export default function TopBar({
               {exporting === 'xlsx' ? 'Exporting…' : 'Excel'}
             </button>
           </div>
-          <AccountButton compact={!dual && mobilePane === 'recite'} />
+          <AccountButton />
         </div>
-
-        {reciteControls ? (
-          <div
-            className={mobilePane === 'recite'
-              ? 'absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2'
-              : 'hidden'}
-          >
-            {reciteControls}
-          </div>
-        ) : null}
 
         <button className="btn btn-ghost shrink-0 gap-2 px-2" onClick={() => setNavOpen(true)}
           aria-label="Jump to surah, page or juz">

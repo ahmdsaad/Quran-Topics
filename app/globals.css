@@ -142,19 +142,6 @@ body {
   stroke-opacity: 0.26;
 }
 
-.svg-reciting-word {
-  stroke-width: 0.65;
-  vector-effect: non-scaling-stroke;
-  pointer-events: none;
-}
-
-.svg-reciting-word--correct {
-  fill: #78dc91;
-  fill-opacity: 0.48;
-  stroke: #319654;
-  stroke-opacity: 0.72;
-}
-
 .svg-verse-highlight--noted {
   fill: #86d69b;
   fill-opacity: 0.36;

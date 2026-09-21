@@ -12,7 +12,6 @@ import SelectionBar from '@/components/verse/SelectionBar';
 import SearchPanel from '@/components/search/SearchPanel';
 import BookmarksPanel from '@/components/BookmarksPanel';
 import SettingsPanel from '@/components/SettingsPanel';
-import RecitePanel, { type RecitationPosition } from '@/components/recite/RecitePanel';
 import Toast from '@/components/Toast';
 import DragLayer from '@/components/dnd/DragLayer';
 import SyncManager from '@/components/auth/SyncManager';
@@ -59,12 +58,9 @@ export default function App() {
   const [marksPage, setMarksPage] = useState(1);
   const [marksJumpToken, setMarksJumpToken] = useState(0);
   const [mobileMarksReader, setMobileMarksReader] = useState(false);
-  const [recitePage, setRecitePage] = useState(1);
-  const [reciteJumpToken, setReciteJumpToken] = useState(0);
-  const [recitationPosition, setRecitationPosition] = useState<RecitationPosition | null>(null);
-  const [revealOnly, setRevealOnly] = useState(false);
-  const [revealedRecitationProgress, setRevealedRecitationProgress] = useState<ReadonlyMap<string, number>>(() => new Map());
-  const recitePageRef = useRef(1);
+  const [hiddenPage, setHiddenPage] = useState(1);
+  const [hiddenJumpToken, setHiddenJumpToken] = useState(0);
+  const [dimmedVerses, setDimmedVerses] = useState<ReadonlySet<string>>(() => new Set());
   const [dual, setDual] = useState(false);
 
   const {
@@ -117,8 +113,7 @@ export default function App() {
         const page = hasValidDeepPage ? deep : (rs?.page ?? 1);
         setInitialPage(page);
         setCurrentPage(page);
-        setRecitePage(page);
-        recitePageRef.current = page;
+        setHiddenPage(page);
         // The updater uses `page` as a one-time, synchronous hand-off across a
         // mobile refresh. Remove it after consuming it so a later launch can
         // resume from whichever device most recently updated the cloud state.
@@ -325,20 +320,6 @@ export default function App() {
         ? { from: selectionAnchor, to: selectionAnchor }
         : null;
 
-  const handleRecitationProgress = useCallback((progress: Record<string, number>) => {
-    setRevealedRecitationProgress((previous) => {
-      const next = new Map(previous);
-      let changed = false;
-      for (const [key, characters] of Object.entries(progress)) {
-        if (characters > (next.get(key) ?? 0)) {
-          next.set(key, characters);
-          changed = true;
-        }
-      }
-      return changed ? next : previous;
-    });
-  }, []);
-
   // ------------------------------------------------------------------ states
   if (phase === 'loading') {
     return (
@@ -394,21 +375,19 @@ export default function App() {
   }
 
   // ------------------------------------------------------------------- shell
-  const openRecitePage = (page: number) => {
-    recitePageRef.current = page;
-    setRecitePage(page);
-    setReciteJumpToken((token) => token + 1);
+  const openHiddenPage = (page: number) => {
+    setHiddenPage(page);
+    setHiddenJumpToken((token) => token + 1);
   };
 
-  const handleRecitationPosition = (position: RecitationPosition) => {
-    setRecitationPosition(position);
-    if (position.page !== recitePageRef.current) openRecitePage(position.page);
-  };
-
-  const resetRecitation = () => {
-    setRecitationPosition(null);
-    setRevealedRecitationProgress(new Map());
-  };
+  const toggleHiddenVerse = useCallback((verseKey: string) => {
+    setDimmedVerses((previous) => {
+      const next = new Set(previous);
+      if (next.has(verseKey)) next.delete(verseKey);
+      else next.add(verseKey);
+      return next;
+    });
+  }, []);
 
   const readerPane = (
     <Reader
@@ -429,58 +408,22 @@ export default function App() {
     />
   );
 
-  const reciteReaderPane = (
+  const hiddenReaderPane = (
     <Reader
       meta={meta}
       markers={markers}
       selectedVerse={null}
       searchedVerse={null}
-      recitingWord={recitationPosition
-        ? {
-            verseKey: recitationPosition.verseKey,
-            wordIndex: recitationPosition.wordIndex,
-            characterEndInVerse: recitationPosition.characterEndInVerse,
-          }
-        : null}
-      revealOnly={revealOnly}
-      revealedProgress={revealedRecitationProgress}
+      dimmedVerses={dimmedVerses}
       range={null}
-      onVerseTap={handleVerseTap}
-      onRangeStart={startRange}
-      initialPage={recitePage}
-      jumpToken={reciteJumpToken}
+      onVerseTap={(verseKey) => toggleHiddenVerse(verseKey)}
+      onRangeStart={toggleHiddenVerse}
+      initialPage={hiddenPage}
+      jumpToken={hiddenJumpToken}
       scale={scale}
       persistReading={false}
-      active={mobilePane === 'recite'}
-      onPageChange={(page) => {
-        recitePageRef.current = page;
-        setRecitePage(page);
-      }}
-    />
-  );
-
-  const reciteControls = (
-    <RecitePanel
-      meta={meta}
-      active={mobilePane === 'recite'}
-      onPosition={handleRecitationPosition}
-      onProgress={handleRecitationProgress}
-      onReset={resetRecitation}
-      revealOnly={revealOnly}
-      onRevealOnlyChange={setRevealOnly}
-    />
-  );
-
-  const mobileReciteControls = (
-    <RecitePanel
-      meta={meta}
-      compact
-      active={mobilePane === 'recite'}
-      onPosition={handleRecitationPosition}
-      onProgress={handleRecitationProgress}
-      onReset={resetRecitation}
-      revealOnly={revealOnly}
-      onRevealOnlyChange={setRevealOnly}
+      active={mobilePane === 'hidden'}
+      onPageChange={setHiddenPage}
     />
   );
 
@@ -697,8 +640,6 @@ export default function App() {
         qaPane
       ) : mobilePane === 'bookmarks' ? (
         marksPane
-      ) : mobilePane === 'recite' ? (
-        reciteControls
       ) : mobilePane === 'settings' ? (
         <SettingsPanel
           scale={scale}
@@ -736,11 +677,10 @@ export default function App() {
                 ? qaPage
               : mobilePane === 'bookmarks' && (dual || mobileMarksReader)
                 ? marksPage
-              : mobilePane === 'recite'
-                ? recitePage
+              : mobilePane === 'hidden'
+                ? hiddenPage
                 : currentPage}
           dual={dual}
-          reciteControls={dual ? undefined : mobileReciteControls}
           onJump={(page) => {
             if (mobilePane === 'search') {
               openSearchPage(page);
@@ -754,9 +694,8 @@ export default function App() {
             } else if (mobilePane === 'bookmarks') {
               openMarksPage(page);
               if (!dual) setMobileMarksReader(true);
-            } else if (mobilePane === 'recite') {
-              resetRecitation();
-              openRecitePage(page);
+            } else if (mobilePane === 'hidden') {
+              openHiddenPage(page);
             } else {
               jumpTo(page);
             }
@@ -769,7 +708,7 @@ export default function App() {
           {dual ? (
             <>
               <aside
-                className={`${mobilePane === 'reader' ? 'hidden' : 'flex'} w-[60%] shrink-0 flex-col border-r`}
+                className={`${mobilePane === 'reader' || mobilePane === 'hidden' ? 'hidden' : 'flex'} w-[60%] shrink-0 flex-col border-r`}
                 style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
               >
                 {/* Keep Search and Topics mounted while switching workspaces so
@@ -778,7 +717,6 @@ export default function App() {
                 <div className={mobilePane === 'categories' ? 'h-full' : 'hidden'}>{topicsPane}</div>
                 <div className={mobilePane === 'qa' ? 'h-full' : 'hidden'}>{qaPane}</div>
                 <div className={mobilePane === 'bookmarks' ? 'h-full' : 'hidden'}>{marksPane}</div>
-                <div className={mobilePane === 'recite' ? 'h-full' : 'hidden'}>{reciteControls}</div>
                 {mobilePane === 'settings' ? (
                   <SettingsPanel
                     scale={scale}
@@ -802,7 +740,7 @@ export default function App() {
                     its page, scroll position, and temporary green highlight
                     survive tab changes. */}
                 <div
-                  className={mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks' && mobilePane !== 'recite'
+                  className={mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks' && mobilePane !== 'hidden'
                     ? 'h-full'
                     : 'invisible absolute inset-0 h-full pointer-events-none'}
                 >
@@ -837,11 +775,11 @@ export default function App() {
                   {marksReaderPane}
                 </div>
                 <div
-                  className={mobilePane === 'recite'
+                  className={mobilePane === 'hidden'
                     ? 'h-full'
                     : 'invisible absolute inset-0 h-full pointer-events-none'}
                 >
-                  {reciteReaderPane}
+                  {hiddenReaderPane}
                 </div>
               </main>
             </>
@@ -864,10 +802,10 @@ export default function App() {
               <div className={mobilePane === 'bookmarks' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
                 {marksPane}
               </div>
-              <div className={mobilePane === 'recite' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
-                {reciteReaderPane}
+              <div className={mobilePane === 'hidden' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
+                {hiddenReaderPane}
               </div>
-              {mobilePane !== 'reader' && mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks' && mobilePane !== 'recite' ? (
+              {mobilePane !== 'reader' && mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks' && mobilePane !== 'hidden' ? (
                 <div className="h-full" style={{ background: 'var(--surface)' }}>
                   {sidePane}
                 </div>
@@ -894,7 +832,7 @@ function MobileTabs() {
     { id: 'reader', label: 'Read', icon: '☰' },
     { id: 'categories', label: 'Topics', icon: '▤' },
     { id: 'qa', label: 'Q/A', icon: '?' },
-    { id: 'recite', label: 'Test', icon: '◉' },
+    { id: 'hidden', label: 'Hidden', icon: '◌' },
     { id: 'search', label: 'Search', icon: '⌕' },
     { id: 'bookmarks', label: 'Marks', icon: '⚑' },
     { id: 'settings', label: 'Settings', icon: '⚙' },
