@@ -19,7 +19,7 @@ import AutoUpdate from '@/components/auth/AutoUpdate';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { syncNow } from '@/lib/supabase/sync';
 import { ensureCorpus, loadMeta } from '@/lib/db/bootstrap';
-import { allMarkers, getReadingState, getSettings, rebuildMarkers } from '@/lib/db/repo';
+import { allMarkers, getHiddenVerseKeys, getReadingState, getSettings, rebuildMarkers, setVerseHidden } from '@/lib/db/repo';
 import { db } from '@/lib/db/schema';
 import type { Meta, TranslationLanguage, VerseMarker } from '@/lib/types';
 import { useUI } from '@/lib/store';
@@ -60,7 +60,6 @@ export default function App() {
   const [mobileMarksReader, setMobileMarksReader] = useState(false);
   const [hiddenPage, setHiddenPage] = useState(1);
   const [hiddenJumpToken, setHiddenJumpToken] = useState(0);
-  const [dimmedVerses, setDimmedVerses] = useState<ReadonlySet<string>>(() => new Set());
   const [dual, setDual] = useState(false);
 
   const {
@@ -282,6 +281,16 @@ export default function App() {
     return m;
   }, [markerRows]);
 
+  const hiddenVerseKeys = useLiveQuery(
+    () => (phase === 'ready' ? getHiddenVerseKeys() : Promise.resolve([] as string[])),
+    [phase],
+    [] as string[],
+  );
+  const dimmedVerses = useMemo(
+    () => new Set(hiddenVerseKeys ?? []),
+    [hiddenVerseKeys],
+  );
+
   // One tap does one of three things, in priority order:
   //   1. shift-click, or a tap while a range is pending -> close the range
   //   2. shift-click with nothing pending -> start a range at the last verse
@@ -381,11 +390,9 @@ export default function App() {
   };
 
   const toggleHiddenVerse = (verseKey: string) => {
-    setDimmedVerses((previous) => {
-      const next = new Set(previous);
-      if (next.has(verseKey)) next.delete(verseKey);
-      else next.add(verseKey);
-      return next;
+    void setVerseHidden(verseKey, !dimmedVerses.has(verseKey)).catch((error) => {
+      console.error('[hidden verse]', error);
+      useUI.getState().showToast('Could not update hidden verse');
     });
   };
 

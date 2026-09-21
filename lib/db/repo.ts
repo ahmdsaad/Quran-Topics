@@ -4,6 +4,7 @@ import type {
   Category,
   CategoryVerse,
   Note,
+  HiddenVerseState,
   ReadingState,
   Settings,
   SyncEnvelope,
@@ -684,11 +685,32 @@ export async function removeBookmark(id: string) {
 
 // ------------------------------------------------------- reading + settings
 
-export const getReadingState = () => db().readingState.get('current');
+export async function getReadingState(): Promise<ReadingState | undefined> {
+  const state = await db().readingState.get('current');
+  return state?.id === 'current' ? state : undefined;
+}
+
+export async function getHiddenVerseKeys(): Promise<string[]> {
+  const states = await db().readingState.where('id').startsWith('hidden:').toArray();
+  return states
+    .filter((state): state is HiddenVerseState => state.id !== 'current' && state.hidden)
+    .map((state) => state.verseKey);
+}
+
+export async function setVerseHidden(verseKey: string, hidden: boolean) {
+  const d = db();
+  const id = `hidden:${verseKey}` as const;
+  const state: HiddenVerseState = { id, verseKey, hidden, updatedAt: Date.now() };
+  await d.transaction('rw', d.readingState, d.outbox, async () => {
+    await d.readingState.put(state);
+    await log('readingState', id, 'put', state);
+  });
+  window.dispatchEvent(new CustomEvent('quran-sync-requested'));
+}
 
 export async function saveReadingState(page: number, verseKey: string, offset: number) {
   const d = db();
-  const current = await d.readingState.get('current');
+  const current = await getReadingState();
   if (
     current?.page === page &&
     current.verseKey === verseKey &&

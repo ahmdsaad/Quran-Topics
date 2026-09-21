@@ -44,8 +44,10 @@ export default function SyncManager() {
       const timer = window.setInterval(() => { void restoreLatestPage(); }, 15_000);
       window.addEventListener('online', run);
       const onReadingStateSaved = () => { void run(); };
+      const onSyncRequested = () => { void run(); };
       const onPageHide = () => { void run(); };
       window.addEventListener('quran-reading-state-saved', onReadingStateSaved);
+      window.addEventListener('quran-sync-requested', onSyncRequested);
       window.addEventListener('pagehide', onPageHide);
       const onVisibilityChange = () => {
         if (document.visibilityState === 'visible') void restoreLatestPage();
@@ -74,6 +76,7 @@ export default function SyncManager() {
         window.clearInterval(timer);
         window.removeEventListener('online', run);
         window.removeEventListener('quran-reading-state-saved', onReadingStateSaved);
+        window.removeEventListener('quran-sync-requested', onSyncRequested);
         window.removeEventListener('pagehide', onPageHide);
         document.removeEventListener('visibilitychange', onVisibilityChange);
         void supabase.removeChannel(channel);

@@ -128,6 +128,14 @@ export interface ReadingState {
   updatedAt: number;
 }
 
+/** Synced independently per verse so devices do not overwrite unrelated hides. */
+export interface HiddenVerseState {
+  id: `hidden:${string}`;
+  verseKey: string;
+  hidden: boolean;
+  updatedAt: number;
+}
+
 export interface Settings {
   id: 'current';
   theme: 'light' | 'dark' | 'sepia';
