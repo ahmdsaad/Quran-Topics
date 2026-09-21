@@ -310,7 +310,7 @@ export default function SvgMushafPage({
       const key = `${surah}:${ayah}`;
       group.dataset.verseKey = key;
       group.classList.add('svg-mushaf-word');
-      group.style.opacity = dimmedVerses?.has(key) ? '0.25' : '';
+      group.style.opacity = dimmedVerses?.has(key) ? '0.10' : '';
       const segmentKey = `${key}-${group.dataset.lineNumber}`;
       const current = segments.get(segmentKey) ?? { key, boxes: [], marker: markers.get(key) };
       current.boxes.push(group.getBBox() as unknown as DOMRect);
