@@ -380,14 +380,14 @@ export default function App() {
     setHiddenJumpToken((token) => token + 1);
   };
 
-  const toggleHiddenVerse = useCallback((verseKey: string) => {
+  const toggleHiddenVerse = (verseKey: string) => {
     setDimmedVerses((previous) => {
       const next = new Set(previous);
       if (next.has(verseKey)) next.delete(verseKey);
       else next.add(verseKey);
       return next;
     });
-  }, []);
+  };
 
   const readerPane = (
     <Reader
