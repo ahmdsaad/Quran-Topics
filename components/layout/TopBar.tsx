@@ -17,6 +17,10 @@ export default function TopBar({
   onJump,
   scale,
   onScale,
+  autoScrollEnabled,
+  autoScrollSpeed,
+  onToggleAutoScroll,
+  onAutoScrollSpeed,
 }: {
   meta: Meta;
   currentPage: number;
@@ -24,6 +28,10 @@ export default function TopBar({
   onJump: (page: number) => void;
   scale: number;
   onScale: (v: number) => void;
+  autoScrollEnabled: boolean;
+  autoScrollSpeed: number;
+  onToggleAutoScroll: () => void;
+  onAutoScrollSpeed: (speed: number) => void;
 }) {
   const [navOpen, setNavOpen] = useState(false);
   const [exporting, setExporting] = useState<'docx' | 'xlsx' | null>(null);
@@ -106,6 +114,47 @@ export default function TopBar({
           </div>
           <AccountButton />
         </div>
+
+        {!dual && mobilePane === 'reader' ? (
+          <div
+            className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1 sm:hidden"
+            aria-label={`Auto-scroll speed ${autoScrollSpeed} of 5`}
+          >
+            <button
+              className="flex h-8 w-8 items-center justify-center rounded-full text-lg disabled:opacity-30"
+              style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}
+              onClick={() => onAutoScrollSpeed(Math.max(1, autoScrollSpeed - 1))}
+              disabled={autoScrollSpeed <= 1}
+              aria-label="Decrease auto-scroll speed"
+            >
+              −
+            </button>
+            <button
+              className="relative flex h-9 w-9 items-center justify-center rounded-full text-sm"
+              style={{
+                background: autoScrollEnabled ? 'var(--accent-soft)' : 'var(--surface-2)',
+                color: autoScrollEnabled ? 'var(--accent)' : 'var(--ink)',
+              }}
+              onClick={onToggleAutoScroll}
+              aria-label={autoScrollEnabled ? 'Pause auto-scroll' : 'Start auto-scroll'}
+              aria-pressed={autoScrollEnabled}
+            >
+              <span aria-hidden="true">{autoScrollEnabled ? 'Ⅱ' : '▶'}</span>
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-0.5 text-[9px] font-bold shadow-sm">
+                {autoScrollSpeed}
+              </span>
+            </button>
+            <button
+              className="flex h-8 w-8 items-center justify-center rounded-full text-lg disabled:opacity-30"
+              style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}
+              onClick={() => onAutoScrollSpeed(Math.min(5, autoScrollSpeed + 1))}
+              disabled={autoScrollSpeed >= 5}
+              aria-label="Increase auto-scroll speed"
+            >
+              +
+            </button>
+          </div>
+        ) : null}
 
         <button className="btn btn-ghost shrink-0 gap-2 px-2" onClick={() => setNavOpen(true)}
           aria-label="Jump to surah, page or juz">

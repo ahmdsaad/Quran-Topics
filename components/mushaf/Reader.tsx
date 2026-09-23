@@ -25,6 +25,10 @@ interface Props {
   persistReading?: boolean;
   /** A mounted but hidden Read workspace must not react to another mode's gestures. */
   active?: boolean;
+  /** Smooth, mobile Read-mode scrolling controlled from the top bar. */
+  autoScroll?: boolean;
+  autoScrollSpeed?: number;
+  onAutoScrollEnd?: () => void;
 }
 
 /**
@@ -50,6 +54,9 @@ export default function Reader({
   jumpToken,
   persistReading = true,
   active = true,
+  autoScroll = false,
+  autoScrollSpeed = 1,
+  onAutoScrollEnd,
 }: Props) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -203,6 +210,39 @@ export default function Reader({
     suppressRemoteSaveUntil.current = 0;
     userNavigationActive.current = true;
   }, []);
+
+  useEffect(() => {
+    if (!active || !autoScroll) return;
+    const el = parentRef.current;
+    if (!el) return;
+
+    // Deliberately gentle reading speeds, expressed in CSS pixels per second.
+    const speeds = [10, 18, 28, 40, 55];
+    const pixelsPerSecond = speeds[Math.min(5, Math.max(1, autoScrollSpeed)) - 1];
+    let frame = 0;
+    let previous = performance.now();
+    let position = el.scrollTop;
+    markUserNavigation();
+
+    const scroll = (now: number) => {
+      const elapsed = Math.min(64, now - previous);
+      previous = now;
+      const maximum = Math.max(0, el.scrollHeight - el.clientHeight);
+      if (position >= maximum - 1) {
+        onAutoScrollEnd?.();
+        return;
+      }
+      // Keep the fractional position ourselves. Some mobile engines expose
+      // scrollTop as whole pixels, which otherwise makes the gentlest speed
+      // repeatedly round a sub-pixel step back to zero.
+      position = Math.min(maximum, position + (pixelsPerSecond * elapsed) / 1000);
+      el.scrollTop = position;
+      frame = requestAnimationFrame(scroll);
+    };
+
+    frame = requestAnimationFrame(scroll);
+    return () => cancelAnimationFrame(frame);
+  }, [active, autoScroll, autoScrollSpeed, markUserNavigation, onAutoScrollEnd]);
 
   // Listen on the window as well as the reading surface. Page jumps from the
   // surah navigator and search results begin with a gesture outside the reader,

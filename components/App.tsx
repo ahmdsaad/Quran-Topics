@@ -61,6 +61,8 @@ export default function App() {
   const [hiddenPage, setHiddenPage] = useState(1);
   const [hiddenJumpToken, setHiddenJumpToken] = useState(0);
   const [dual, setDual] = useState(false);
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(false);
+  const [autoScrollSpeed, setAutoScrollSpeed] = useState(1);
 
   const {
     jumpPage,
@@ -81,6 +83,12 @@ export default function App() {
     startRange,
     extendRange,
   } = useUI();
+
+  useEffect(() => {
+    if (mobilePane !== 'reader' || dual) setAutoScrollEnabled(false);
+  }, [dual, mobilePane]);
+
+  const stopAutoScroll = useCallback(() => setAutoScrollEnabled(false), []);
 
   // ------------------------------------------------------------------- boot
   useEffect(() => {
@@ -423,6 +431,9 @@ export default function App() {
       jumpToken={jumpToken}
       scale={scale}
       active={mobilePane === 'reader'}
+      autoScroll={autoScrollEnabled && !dual}
+      autoScrollSpeed={autoScrollSpeed}
+      onAutoScrollEnd={stopAutoScroll}
       onPageChange={(page) => {
         if (mobilePane === 'reader') setCurrentPage(page);
       }}
@@ -728,6 +739,10 @@ export default function App() {
           }}
           scale={scale}
           onScale={setScale}
+          autoScrollEnabled={autoScrollEnabled}
+          autoScrollSpeed={autoScrollSpeed}
+          onToggleAutoScroll={() => setAutoScrollEnabled((enabled) => !enabled)}
+          onAutoScrollSpeed={setAutoScrollSpeed}
         />
 
         <div className="flex min-h-0 flex-1">
