@@ -222,11 +222,19 @@ export default function Reader({
     let frame = 0;
     let previous = performance.now();
     let position = el.scrollTop;
+    let lastAppliedPosition = el.scrollTop;
     markUserNavigation();
 
     const scroll = (now: number) => {
       const elapsed = Math.min(64, now - previous);
       previous = now;
+      // A swipe, wheel movement, or scrollbar drag can change scrollTop while
+      // auto-scroll remains enabled. Adopt that new position immediately so
+      // the animation continues from where the reader manually stopped,
+      // instead of pulling the page back to its earlier automatic position.
+      if (Math.abs(el.scrollTop - lastAppliedPosition) > 0.5) {
+        position = el.scrollTop;
+      }
       const maximum = Math.max(0, el.scrollHeight - el.clientHeight);
       if (position >= maximum - 1) {
         onAutoScrollEnd?.();
@@ -237,6 +245,7 @@ export default function Reader({
       // repeatedly round a sub-pixel step back to zero.
       position = Math.min(maximum, position + (pixelsPerSecond * elapsed) / 1000);
       el.scrollTop = position;
+      lastAppliedPosition = el.scrollTop;
       frame = requestAnimationFrame(scroll);
     };
 
