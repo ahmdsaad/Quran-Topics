@@ -130,7 +130,7 @@ export default function TopBar({
               −
             </button>
             <button
-              className="relative flex h-9 w-9 items-center justify-center rounded-full text-sm"
+              className="relative flex h-9 min-w-[92px] items-center justify-center gap-1.5 rounded-full px-3 text-[12px] font-semibold"
               style={{
                 background: autoScrollEnabled ? 'var(--accent-soft)' : 'var(--surface-2)',
                 color: autoScrollEnabled ? 'var(--accent)' : 'var(--ink)',
@@ -140,6 +140,7 @@ export default function TopBar({
               aria-pressed={autoScrollEnabled}
             >
               <span aria-hidden="true">{autoScrollEnabled ? 'Ⅱ' : '▶'}</span>
+              <span>{autoScrollEnabled ? 'Pause' : 'Auto scroll'}</span>
               <span className="absolute -bottom-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-0.5 text-[9px] font-bold shadow-sm">
                 {autoScrollSpeed}
               </span>
