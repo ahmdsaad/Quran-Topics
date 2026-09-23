@@ -217,7 +217,7 @@ export default function Reader({
     if (!el) return;
 
     // Deliberately gentle reading speeds, expressed in CSS pixels per second.
-    const speeds = [5, 18, 28, 40, 55];
+    const speeds = [2.5, 9, 14, 20, 27.5];
     const pixelsPerSecond = speeds[Math.min(5, Math.max(1, autoScrollSpeed)) - 1];
     let frame = 0;
     let previous = performance.now();
