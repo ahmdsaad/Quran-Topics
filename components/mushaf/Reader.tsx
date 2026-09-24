@@ -67,6 +67,7 @@ export default function Reader({
   const currentPage = useRef(initialPage);
   const resumePage = useRef(initialPage);
   const previousLandscape = useRef(false);
+  const needsActiveRestore = useRef(true);
   const suppressRemoteSaveUntil = useRef(0);
   const userNavigationActive = useRef(false);
 
@@ -111,12 +112,7 @@ export default function Reader({
   // Exact aspect ratio of the QUL Ligature Based SVG Mushaf viewBox.
   const PAGE_RATIO = compactMobile ? 1.85 : 1.56;
   const fitToHeight = height > 0 ? height / PAGE_RATIO : 820;
-  // Mobile browser chrome continuously changes the usable viewport height as
-  // it appears and disappears. Deriving compact page width from that height
-  // resized every virtual page and made the current separator jump to the top.
-  // Phones and tablets therefore use their stable content width; desktop can
-  // still fit a complete page to the available height.
-  const pageWidth = compactMobile
+  const pageWidth = appLandscape
     ? Math.max(280, width)
     : Math.max(280, Math.min(width, Math.round(fitToHeight * scale), 900));
   const PAGE_GAP = 16;
@@ -183,7 +179,12 @@ export default function Reader({
   // synchronously when Read becomes active so a resize/virtualizer event cannot
   // reinterpret its old pixel offset as a nearby page first.
   useLayoutEffect(() => {
-    if (!active || pageWidth <= 0) return;
+    if (!active) {
+      needsActiveRestore.current = true;
+      return;
+    }
+    if (pageWidth <= 0 || !needsActiveRestore.current) return;
+    needsActiveRestore.current = false;
     const page = resumePage.current;
     const restore = () => {
       currentPage.current = page;
