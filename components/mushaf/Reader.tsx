@@ -111,7 +111,12 @@ export default function Reader({
   // Exact aspect ratio of the QUL Ligature Based SVG Mushaf viewBox.
   const PAGE_RATIO = compactMobile ? 1.85 : 1.56;
   const fitToHeight = height > 0 ? height / PAGE_RATIO : 820;
-  const pageWidth = appLandscape
+  // Mobile browser chrome continuously changes the usable viewport height as
+  // it appears and disappears. Deriving compact page width from that height
+  // resized every virtual page and made the current separator jump to the top.
+  // Phones and tablets therefore use their stable content width; desktop can
+  // still fit a complete page to the available height.
+  const pageWidth = compactMobile
     ? Math.max(280, width)
     : Math.max(280, Math.min(width, Math.round(fitToHeight * scale), 900));
   const PAGE_GAP = 16;
