@@ -117,7 +117,7 @@ export default function TopBar({
 
         {!dual && mobilePane === 'reader' ? (
           <div
-            className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1 sm:hidden"
+            className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1 lg:hidden"
             aria-label={`Auto-scroll speed ${autoScrollSpeed} of 5`}
           >
             <button
