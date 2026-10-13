@@ -12,7 +12,6 @@ interface Props {
   markers: Map<string, VerseMarker>;
   selectedVerse: string | null;
   searchedVerse: string | null;
-  dimmedVerses?: ReadonlySet<string>;
   range: { from: string; to: string } | null;
   onVerseTap: (verseKey: string, el: HTMLElement, additive: boolean) => void;
   onRangeStart: (verseKey: string) => void;
@@ -23,7 +22,7 @@ interface Props {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export default function SvgMushafPage({
-  page, meta, markers, selectedVerse, searchedVerse, dimmedVerses, range, onVerseTap, onRangeStart, compactMobile = false, active = true,
+  page, meta, markers, selectedVerse, searchedVerse, range, onVerseTap, onRangeStart, compactMobile = false, active = true,
 }: Props) {
   const [markup, setMarkup] = useState('');
   const [error, setError] = useState(false);
@@ -310,7 +309,7 @@ export default function SvgMushafPage({
       const key = `${surah}:${ayah}`;
       group.dataset.verseKey = key;
       group.classList.add('svg-mushaf-word');
-      group.style.opacity = dimmedVerses?.has(key) ? '0.10' : '';
+      group.style.opacity = '';
       const segmentKey = `${key}-${group.dataset.lineNumber}`;
       const current = segments.get(segmentKey) ?? { key, boxes: [], marker: markers.get(key) };
       current.boxes.push(group.getBBox() as unknown as DOMRect);
@@ -391,7 +390,7 @@ export default function SvgMushafPage({
     }
     pageInner.insertBefore(layer, pageInner.firstChild);
     pageInner.appendChild(hitLayer);
-  }, [markup, markers, hoverKey, isSelected, categoryToneByVerse, compactMobile, searchedVerse, dimmedVerses, active]);
+  }, [markup, markers, hoverKey, isSelected, categoryToneByVerse, compactMobile, searchedVerse, active]);
 
   const verseTargetAt = (target: EventTarget | null) =>
     (target as Element | null)?.closest<SVGElement>('[data-verse-key]') ?? null;

@@ -19,7 +19,7 @@ import AutoUpdate from '@/components/auth/AutoUpdate';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { syncNow } from '@/lib/supabase/sync';
 import { ensureCorpus, loadMeta } from '@/lib/db/bootstrap';
-import { allMarkers, getHiddenPageState, getHiddenVerseKeys, getReadingState, getSettings, rebuildMarkers, saveHiddenPageState, setVerseHidden } from '@/lib/db/repo';
+import { allMarkers, getReadingState, getSettings, rebuildMarkers } from '@/lib/db/repo';
 import { db } from '@/lib/db/schema';
 import type { Meta, TranslationLanguage, VerseMarker } from '@/lib/types';
 import { useUI } from '@/lib/store';
@@ -58,8 +58,6 @@ export default function App() {
   const [marksPage, setMarksPage] = useState(1);
   const [marksJumpToken, setMarksJumpToken] = useState(0);
   const [mobileMarksReader, setMobileMarksReader] = useState(false);
-  const [hiddenPage, setHiddenPage] = useState(1);
-  const [hiddenJumpToken, setHiddenJumpToken] = useState(0);
   const [dual, setDual] = useState(false);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(false);
   const [autoScrollSpeed, setAutoScrollSpeed] = useState(1);
@@ -111,8 +109,8 @@ export default function App() {
             console.error('[initial reading sync]', syncError);
           }
         }
-        const [m, rs, st, hiddenState] = await Promise.all([
-          loadMeta(), getReadingState(), getSettings(), getHiddenPageState(),
+        const [m, rs, st] = await Promise.all([
+          loadMeta(), getReadingState(), getSettings(),
         ]);
         if (!live) return;
         setMeta(m);
@@ -122,7 +120,6 @@ export default function App() {
         const page = hasValidDeepPage ? deep : (rs?.page ?? 1);
         setInitialPage(page);
         setCurrentPage(page);
-        setHiddenPage(hiddenState?.page ?? page);
         // The updater uses `page` as a one-time, synchronous hand-off across a
         // mobile refresh. Remove it after consuming it so a later launch can
         // resume from whichever device most recently updated the cloud state.
@@ -191,7 +188,9 @@ export default function App() {
       setMobileQaReader(snapshot.qaReader);
       setMobileMarksReader(snapshot.marksReader);
       useUI.setState({
-        mobilePane: snapshot.pane,
+        // Old installed-app history can still contain the removed Hidden tab.
+        // Returning to that entry should safely open Read instead of a blank pane.
+        mobilePane: (snapshot.pane as string) === 'hidden' ? 'reader' : snapshot.pane,
         openCategoryId: snapshot.openCategoryId,
         openQaCategoryId: snapshot.openQaCategoryId,
         activeVerse: snapshot.activeVerse,
@@ -291,28 +290,6 @@ export default function App() {
     return m;
   }, [markerRows]);
 
-  const hiddenVerseKeys = useLiveQuery(
-    () => (phase === 'ready' ? getHiddenVerseKeys() : Promise.resolve([] as string[])),
-    [phase],
-    [] as string[],
-  );
-  const dimmedVerses = useMemo(
-    () => new Set(hiddenVerseKeys ?? []),
-    [hiddenVerseKeys],
-  );
-  const syncedHiddenPage = useLiveQuery(
-    () => (phase === 'ready' ? getHiddenPageState() : Promise.resolve(undefined)),
-    [phase],
-  );
-  useEffect(() => {
-    if (!syncedHiddenPage?.page) return;
-    setHiddenPage((current) => {
-      if (current === syncedHiddenPage.page) return current;
-      setHiddenJumpToken((token) => token + 1);
-      return syncedHiddenPage.page;
-    });
-  }, [syncedHiddenPage?.page, syncedHiddenPage?.updatedAt]);
-
   // One tap does one of three things, in priority order:
   //   1. shift-click, or a tap while a range is pending -> close the range
   //   2. shift-click with nothing pending -> start a range at the last verse
@@ -406,18 +383,6 @@ export default function App() {
   }
 
   // ------------------------------------------------------------------- shell
-  const openHiddenPage = (page: number) => {
-    setHiddenPage(page);
-    setHiddenJumpToken((token) => token + 1);
-  };
-
-  const toggleHiddenVerse = (verseKey: string) => {
-    void setVerseHidden(verseKey, !dimmedVerses.has(verseKey)).catch((error) => {
-      console.error('[hidden verse]', error);
-      useUI.getState().showToast('Could not update hidden verse');
-    });
-  };
-
   const readerPane = (
     <Reader
       meta={meta}
@@ -436,30 +401,6 @@ export default function App() {
       onAutoScrollEnd={stopAutoScroll}
       onPageChange={(page) => {
         if (mobilePane === 'reader') setCurrentPage(page);
-      }}
-    />
-  );
-
-  const hiddenReaderPane = (
-    <Reader
-      meta={meta}
-      markers={markers}
-      selectedVerse={null}
-      searchedVerse={null}
-      dimmedVerses={dimmedVerses}
-      range={null}
-      onVerseTap={(verseKey) => toggleHiddenVerse(verseKey)}
-      onRangeStart={toggleHiddenVerse}
-      initialPage={hiddenPage}
-      jumpToken={hiddenJumpToken}
-      scale={scale}
-      persistReading={false}
-      active={mobilePane === 'hidden'}
-      onPageChange={(page) => {
-        setHiddenPage(page);
-        void saveHiddenPageState(page).catch((error) => {
-          console.error('[hidden page]', error);
-        });
       }}
     />
   );
@@ -714,9 +655,7 @@ export default function App() {
                 ? qaPage
               : mobilePane === 'bookmarks' && (dual || mobileMarksReader)
                 ? marksPage
-              : mobilePane === 'hidden'
-                ? hiddenPage
-                : currentPage}
+              : currentPage}
           dual={dual}
           onJump={(page) => {
             if (mobilePane === 'search') {
@@ -731,8 +670,6 @@ export default function App() {
             } else if (mobilePane === 'bookmarks') {
               openMarksPage(page);
               if (!dual) setMobileMarksReader(true);
-            } else if (mobilePane === 'hidden') {
-              openHiddenPage(page);
             } else {
               jumpTo(page);
             }
@@ -749,7 +686,7 @@ export default function App() {
           {dual ? (
             <>
               <aside
-                className={`${mobilePane === 'reader' || mobilePane === 'hidden' ? 'hidden' : 'flex'} w-[60%] shrink-0 flex-col border-r`}
+                className={`${mobilePane === 'reader' ? 'hidden' : 'flex'} w-[60%] shrink-0 flex-col border-r`}
                 style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
               >
                 {/* Keep Search and Topics mounted while switching workspaces so
@@ -781,7 +718,7 @@ export default function App() {
                     its page, scroll position, and temporary green highlight
                     survive tab changes. */}
                 <div
-                  className={mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks' && mobilePane !== 'hidden'
+                  className={mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks'
                     ? 'h-full'
                     : 'invisible absolute inset-0 h-full pointer-events-none'}
                 >
@@ -815,13 +752,6 @@ export default function App() {
                 >
                   {marksReaderPane}
                 </div>
-                <div
-                  className={mobilePane === 'hidden'
-                    ? 'h-full'
-                    : 'invisible absolute inset-0 h-full pointer-events-none'}
-                >
-                  {hiddenReaderPane}
-                </div>
               </main>
             </>
           ) : (
@@ -843,10 +773,7 @@ export default function App() {
               <div className={mobilePane === 'bookmarks' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
                 {marksPane}
               </div>
-              <div className={mobilePane === 'hidden' ? 'h-full' : 'invisible absolute inset-0 h-full pointer-events-none'}>
-                {hiddenReaderPane}
-              </div>
-              {mobilePane !== 'reader' && mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks' && mobilePane !== 'hidden' ? (
+              {mobilePane !== 'reader' && mobilePane !== 'search' && mobilePane !== 'categories' && mobilePane !== 'qa' && mobilePane !== 'bookmarks' ? (
                 <div className="h-full" style={{ background: 'var(--surface)' }}>
                   {sidePane}
                 </div>
@@ -873,7 +800,6 @@ function MobileTabs() {
     { id: 'reader', label: 'Read', icon: '☰' },
     { id: 'categories', label: 'Topics', icon: '▤' },
     { id: 'qa', label: 'Q/A', icon: '?' },
-    { id: 'hidden', label: 'Hidden', icon: '◌' },
     { id: 'search', label: 'Search', icon: '⌕' },
     { id: 'bookmarks', label: 'Marks', icon: '⚑' },
     { id: 'settings', label: 'Settings', icon: '⚙' },
