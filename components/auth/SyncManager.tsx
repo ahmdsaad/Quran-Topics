@@ -30,11 +30,18 @@ export default function SyncManager() {
         const before = await getReadingState();
         await run();
         const after = await getReadingState();
-        if (after?.page && after.updatedAt !== before?.updatedAt) {
+        if (
+          after?.page
+          && after.updatedAt !== before?.updatedAt
+          && after.page !== before?.page
+        ) {
           // Tell the reader that the upcoming scroll came from cloud state.
           // Otherwise its scroll handler treats the programmatic jump as a new
           // local reading action and sends it back, making devices bounce pages
           // between one another indefinitely.
+          // A newer offset on the page already being read is deliberately not
+          // navigation. Jumping to that same page would align its separator to
+          // the top and interrupt reading even though the page never changed.
           window.dispatchEvent(new CustomEvent('quran-remote-page-will-apply'));
           jumpTo(after.page);
         }
