@@ -15,6 +15,7 @@ import {
   removeBookmark,
 } from '@/lib/db/repo';
 import { useUI } from '@/lib/store';
+import { exportVerseImage } from '@/lib/export/verseImage';
 
 export default function VerseActionSheet({
   meta,
@@ -36,10 +37,13 @@ export default function VerseActionSheet({
     setMobilePane,
   } = useUI();
   const [verse, setVerse] = useState<Verse | null>(null);
+  const [copyOptionsOpen, setCopyOptionsOpen] = useState(false);
+  const [exportingImage, setExportingImage] = useState(false);
 
   useEffect(() => {
     if (!activeVerse) {
       setVerse(null);
+      setCopyOptionsOpen(false);
       return;
     }
     let live = true;
@@ -76,15 +80,41 @@ export default function VerseActionSheet({
   const assignedQa = assigned.filter((c) => c.description === '__quran_categories_qa__');
   const bookmarked = (bookmarks ?? []).length > 0;
 
-  const copy = async () => {
-    const text = `${verse.text}\n\n— ${surah?.nameSimple ?? ''} ${verse.key}`;
+  const copy = async (withTranslation: boolean) => {
+    const translation = verse.translations?.[translationLanguage]?.trim();
+    const text = [
+      verse.text,
+      withTranslation && translation ? translation : '',
+      `— ${surah?.nameSimple ?? ''} ${verse.key}`,
+    ].filter(Boolean).join('\n\n');
     try {
       await navigator.clipboard.writeText(text);
-      showToast('Verse copied');
+      showToast(withTranslation ? 'Verse and translation copied' : 'Verse copied');
     } catch {
       showToast('Copy is blocked in this browser');
     }
     closeVerse();
+  };
+
+  const createImage = async () => {
+    if (exportingImage) return;
+    setExportingImage(true);
+    try {
+      const copied = await exportVerseImage({
+        arabic: verse.text,
+        translation: verse.translations?.[translationLanguage] ?? '',
+        arabicReference: `${surah?.nameArabic ?? ''} · ${verse.ayah}`,
+        translationReference: `${surah?.nameSimple ?? ''} · ${verse.ayah}`,
+        filename: `Quran-${verse.key.replace(':', '-')}.jpg`,
+      });
+      showToast(copied ? 'Image copied and JPG downloaded' : 'JPG downloaded');
+      closeVerse();
+    } catch (error) {
+      console.error('[verse image]', error);
+      showToast('Could not create the image');
+    } finally {
+      setExportingImage(false);
+    }
   };
 
   return (
@@ -200,8 +230,22 @@ export default function VerseActionSheet({
           >
             {bookmarked ? '⚑ Remove bookmark' : '⚑ Bookmark'}
           </Action>
-          <Action onClick={copy}>⧉ Copy</Action>
+          <Action onClick={() => setCopyOptionsOpen((open) => !open)}>⧉ Copy</Action>
+          <Action onClick={() => { void createImage(); }}>
+            {exportingImage ? 'Creating…' : '▣ Image'}
+          </Action>
         </div>
+
+        {copyOptionsOpen ? (
+          <div className="grid grid-cols-2 gap-2 border-t px-3 py-3" style={{ borderColor: 'var(--border)' }}>
+            <button className="btn btn-ghost text-xs" onClick={() => { void copy(false); }}>
+              Arabic only
+            </button>
+            <button className="btn btn-primary text-xs" onClick={() => { void copy(true); }}>
+              Arabic + translation
+            </button>
+          </div>
+        ) : null}
 
         <DragGrip verseKey={verse.key} verseId={verse.id} />
       </div>
