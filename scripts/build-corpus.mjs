@@ -52,7 +52,6 @@ const fail = (msg) => {
 
 const TRANSLATIONS = [
   ['en', 'en-clear'],
-  ['en-sahih', 'en'],
   ['ru', 'ru'],
   ['it', 'it'],
   ['fr', 'fr'],

@@ -23,7 +23,6 @@ const FONTS_V1 = 'https://cdn.jsdelivr.net/gh/nuqayah/qpc-fonts@master/mushaf-wo
 const FONTS_V1_FALLBACK = 'https://raw.githubusercontent.com/nuqayah/qpc-fonts/master/mushaf-woff2';
 const TRANSLATIONS = [
   ['en-clear', 'en.itani', 'English (Clear)'],
-  ['en', 'en.sahih', 'English (Sahih International)'],
   ['ru', 'ru.kuliev', 'Russian'],
   ['it', 'it.piccardo', 'Italian'],
   ['fr', 'fr.hamidullah', 'French'],

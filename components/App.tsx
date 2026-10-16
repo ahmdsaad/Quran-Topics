@@ -128,7 +128,13 @@ export default function App() {
           history.replaceState(history.state, '', `${bootUrl.pathname}${bootUrl.search}${bootUrl.hash}`);
         }
         if (st?.pageScale) setScale(st.pageScale);
-        if (st?.translationLanguage) setTranslationLanguage(st.translationLanguage);
+        if (st?.translationLanguage) {
+          // Migrate devices that selected the now-removed Sahih edition.
+          const language = (st.translationLanguage as string) === 'en-sahih'
+            ? 'en'
+            : st.translationLanguage;
+          setTranslationLanguage(language as TranslationLanguage);
+        }
         if (st?.categoryArabicFontSize) setCategoryArabicFontSize(st.categoryArabicFontSize);
         if (st?.categoryTranslationFontSize) {
           setCategoryTranslationFontSize(st.categoryTranslationFontSize);
