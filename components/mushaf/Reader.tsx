@@ -62,6 +62,7 @@ export default function Reader({
   const [compactMobile, setCompactMobile] = useState(false);
   const [appLandscape, setAppLandscape] = useState(false);
   const didInitialScroll = useRef(false);
+  const consumedJumpToken = useRef(jumpToken);
   const currentPage = useRef(initialPage);
   const resumePage = useRef(initialPage);
   const previousLandscape = useRef(false);
@@ -126,10 +127,23 @@ export default function Reader({
     overscan: 1,
   });
 
-  // Jump to a page: initial restore, and any later jumpToken bump.
+  // Jump to a page only for the initial restore or a *new* jump token. The
+  // target passed in `initialPage` can contain the last navigator/cloud jump
+  // long after the reader has been scrolled elsewhere. Re-consuming that stale
+  // target when Settings changes the layout used to send readers back to an
+  // unrelated old page.
   useEffect(() => {
     if (pageWidth <= 0) return;
-    if (!didInitialScroll.current) didInitialScroll.current = true;
+    const firstRestore = !didInitialScroll.current;
+    const explicitJump = jumpToken !== consumedJumpToken.current;
+    if (explicitJump) consumedJumpToken.current = jumpToken;
+
+    // A cloud poll can finish while another workspace is open. Consume that
+    // notification without moving the inactive Read workspace; switching back
+    // must resume the page the reader actually left.
+    if (!active) return;
+    if (!firstRestore && !explicitJump) return;
+    didInitialScroll.current = true;
     // Every explicit jump becomes this mode's new restoration anchor before
     // scrolling. Otherwise a concurrent desktop panel resize can restore the
     // previous page and make a Topic/Search verse appear to need two clicks.
@@ -138,7 +152,7 @@ export default function Reader({
     virtualizer.scrollToIndex(Math.max(0, initialPage - 1), { align: 'start' });
     prefetchAround(initialPage, 2);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jumpToken, pageWidth > 0]);
+  }, [active, jumpToken, pageWidth > 0]);
 
   // Preserve the current Quran page while rotating. The virtualizer's item
   // heights change substantially when landscape switches to full-width pages.
