@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { Category, TranslationLanguage } from '@/lib/types';
+import type { Category } from '@/lib/types';
 import { categoryTitles } from '@/lib/categories/titles';
 import CategoryTitle from './CategoryTitle';
 
-export type QuestionLanguage = 'ar' | TranslationLanguage;
+export type QuestionLanguage = 'ar' | 'en' | 'ru' | 'it' | 'fr' | 'es';
 
 const CACHE_PREFIX = 'qc.question-translation.';
 

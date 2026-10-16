@@ -1,7 +1,8 @@
 import type { TranslationLanguage } from '@/lib/types';
 
 const LANGUAGES: { id: TranslationLanguage; label: string }[] = [
-  { id: 'en', label: 'English' },
+  { id: 'en', label: 'English — Clear' },
+  { id: 'en-sahih', label: 'English — Sahih International' },
   { id: 'ru', label: 'Русский' },
   { id: 'it', label: 'Italiano' },
   { id: 'fr', label: 'Français' },

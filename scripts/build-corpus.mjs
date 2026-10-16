@@ -50,10 +50,18 @@ const fail = (msg) => {
   process.exit(1);
 };
 
-const TRANSLATION_LANGUAGES = ['en', 'ru', 'it', 'fr', 'es'];
+const TRANSLATIONS = [
+  ['en', 'en-clear'],
+  ['en-sahih', 'en'],
+  ['ru', 'ru'],
+  ['it', 'it'],
+  ['fr', 'fr'],
+  ['es', 'es'],
+];
+const TRANSLATION_LANGUAGES = TRANSLATIONS.map(([language]) => language);
 const translationMaps = new Map();
-for (const language of TRANSLATION_LANGUAGES) {
-  const translationFile = path.join(__dirname, '..', '.cache', `translation-${language}.json`);
+for (const [language, cacheKey] of TRANSLATIONS) {
+  const translationFile = path.join(__dirname, '..', '.cache', `translation-${cacheKey}.json`);
   if (!fs.existsSync(translationFile)) fail(`missing ${language} translation\n  Run: npm run fetch`);
   const translationPayload = JSON.parse(fs.readFileSync(translationFile, 'utf8'));
   const translations = new Map();

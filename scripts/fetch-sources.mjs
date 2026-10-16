@@ -22,7 +22,8 @@ const LAYOUT = 'https://cdn.jsdelivr.net/gh/zonetecde/mushaf-layout@main/mushaf'
 const FONTS_V1 = 'https://cdn.jsdelivr.net/gh/nuqayah/qpc-fonts@master/mushaf-woff2';
 const FONTS_V1_FALLBACK = 'https://raw.githubusercontent.com/nuqayah/qpc-fonts/master/mushaf-woff2';
 const TRANSLATIONS = [
-  ['en', 'en.sahih', 'English'],
+  ['en-clear', 'en.itani', 'English (Clear)'],
+  ['en', 'en.sahih', 'English (Sahih International)'],
   ['ru', 'ru.kuliev', 'Russian'],
   ['it', 'it.piccardo', 'Italian'],
   ['fr', 'fr.hamidullah', 'French'],
@@ -130,8 +131,8 @@ await fetchAll(
   (n) => `${FONTS_V1_FALLBACK}/QCF_P${pad(n)}.woff2`
 );
 
-for (const [language, edition, label] of TRANSLATIONS) {
-  const translationPath = path.join(CACHE, `translation-${language}.json`);
+for (const [cacheKey, edition, label] of TRANSLATIONS) {
+  const translationPath = path.join(CACHE, `translation-${cacheKey}.json`);
   if (!present(translationPath)) {
     process.stdout.write(`  ${label} translation: fetching`);
     await fetchTo(`https://api.alquran.cloud/v1/quran/${edition}`, translationPath);

@@ -99,6 +99,13 @@ export default function SettingsPanel({
               }}
             />
           </div>
+          <p className="mt-2 text-[11px] leading-relaxed" style={{ color: 'var(--ink-soft)' }}>
+            Clear English: translation by Talal Itani,{' '}
+            <a className="underline" href="https://clearquran.com" target="_blank" rel="noreferrer">
+              ClearQuran.com
+            </a>{' '}
+            (CC BY-ND 4.0).
+          </p>
         </section>
 
         <section>

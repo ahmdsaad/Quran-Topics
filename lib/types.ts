@@ -57,7 +57,7 @@ export interface Verse {
   translations: Record<TranslationLanguage, string>;
 }
 
-export type TranslationLanguage = 'en' | 'ru' | 'it' | 'fr' | 'es';
+export type TranslationLanguage = 'en' | 'en-sahih' | 'ru' | 'it' | 'fr' | 'es';
 export type CategorySpace = 'topics' | 'qa';
 
 // ------------------------------------------------------------- user data types

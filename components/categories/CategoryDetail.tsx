@@ -603,6 +603,7 @@ function VerseRow({
 function translationLabel(language: TranslationLanguage): string {
   return {
     en: 'English',
+    'en-sahih': 'English',
     ru: 'Russian',
     it: 'Italian',
     fr: 'French',
