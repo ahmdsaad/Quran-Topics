@@ -1,11 +1,17 @@
 'use client';
 
+import { fetchPage } from '@/lib/db/bootstrap';
+import { fontFamily, glyphOf, loadPageFont } from '@/lib/mushaf/fonts';
+import type { PageDoc } from '@/lib/types';
+
 type VerseImageInput = {
   arabic: string;
   translation: string;
   arabicReference: string;
   translationReference: string;
   filename: string;
+  page: number;
+  verseKey: string;
 };
 
 type TextBox = {
@@ -81,8 +87,20 @@ function download(blob: Blob, filename: string) {
 
 /** Creates a presentation-ready 16:9 verse card and returns whether it was copied. */
 export async function exportVerseImage(input: VerseImageInput): Promise<boolean> {
+  const [pageDoc] = await Promise.all([
+    fetchPage<PageDoc>(input.page),
+    loadPageFont(input.page),
+  ]);
+  const mushafFamily = fontFamily(input.page);
+  const mushafGlyphs = pageDoc.lines
+    .flatMap((line) => line.t === 'ayah' ? line.w : [])
+    .filter((word) => word.k === input.verseKey)
+    .map(glyphOf)
+    .join(' ');
+
   await Promise.all([
-    document.fonts?.load(`700 72px "Scheherazade New"`, input.arabic),
+    document.fonts?.load(`400 72px "${mushafFamily}"`, mushafGlyphs),
+    document.fonts?.load(`400 72px "Scheherazade New"`, input.arabic),
     document.fonts?.ready,
   ].filter(Boolean));
 
@@ -112,14 +130,19 @@ export async function exportVerseImage(input: VerseImageInput): Promise<boolean>
     direction: 'ltr',
     color: '#3f392f',
   });
-  drawFittedText(context, input.arabic, {
+  drawFittedText(context, mushafGlyphs || input.arabic, {
     x: 1065,
     y: 115,
     width: 750,
     height: 760,
-    family: '"Scheherazade New", "Traditional Arabic", serif',
-    weight: '700',
-    maxSize: 82,
+    family: mushafGlyphs
+      ? `"${mushafFamily}"`
+      : '"Scheherazade New", "Traditional Arabic", serif',
+    weight: '400',
+    // QPC glyphs have a smaller visual em than ordinary Arabic fonts. This
+    // keeps their printed Mushaf weight untouched while giving the verse the
+    // same prominence the former (artificially bold) rendering had.
+    maxSize: 126,
     minSize: 42,
     lineHeight: 1.55,
     direction: 'rtl',
@@ -133,7 +156,7 @@ export async function exportVerseImage(input: VerseImageInput): Promise<boolean>
   context.textAlign = 'center';
   context.fillText(input.translationReference, 480, 960);
   context.direction = 'rtl';
-  context.font = '700 34px "Scheherazade New", "Traditional Arabic", serif';
+  context.font = '400 34px "Scheherazade New", "Traditional Arabic", serif';
   context.fillText(input.arabicReference, 1440, 960);
 
   const jpg = await canvasBlob(canvas, 'image/jpeg', 0.95);
