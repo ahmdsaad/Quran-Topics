@@ -115,12 +115,14 @@ export async function exportVerseImage(input: VerseImageInput): Promise<boolean>
   context.fillStyle = '#8a6d3b';
   context.fillRect(0, 0, canvas.width, 14);
   context.fillStyle = '#e3dac4';
-  context.fillRect(959, 110, 2, 860);
+  // Translation receives 65% of the frame; the original Arabic occupies the
+  // right-hand 35%.
+  context.fillRect(1247, 110, 2, 860);
 
   drawFittedText(context, input.translation, {
-    x: 105,
+    x: 90,
     y: 130,
-    width: 750,
+    width: 1068,
     height: 730,
     family: 'Arial, sans-serif',
     weight: '400',
@@ -131,19 +133,18 @@ export async function exportVerseImage(input: VerseImageInput): Promise<boolean>
     color: '#3f392f',
   });
   drawFittedText(context, mushafGlyphs || input.arabic, {
-    x: 1065,
+    x: 1318,
     y: 115,
-    width: 750,
+    width: 512,
     height: 760,
     family: mushafGlyphs
       ? `"${mushafFamily}"`
       : '"Scheherazade New", "Traditional Arabic", serif',
     weight: '400',
-    // QPC glyphs have a smaller visual em than ordinary Arabic fonts. This
-    // keeps their printed Mushaf weight untouched while giving the verse the
-    // same prominence the former (artificially bold) rendering had.
-    maxSize: 126,
-    minSize: 42,
+    // Keep the authentic Mushaf weight while rendering the Arabic ayah at 50%
+    // of the previous export size.
+    maxSize: 63,
+    minSize: 21,
     lineHeight: 1.55,
     direction: 'rtl',
     color: '#1f1b16',
@@ -154,10 +155,10 @@ export async function exportVerseImage(input: VerseImageInput): Promise<boolean>
   context.textBaseline = 'middle';
   context.direction = 'ltr';
   context.textAlign = 'center';
-  context.fillText(input.translationReference, 480, 960);
+  context.fillText(input.translationReference, 624, 960);
   context.direction = 'rtl';
   context.font = '400 34px "Scheherazade New", "Traditional Arabic", serif';
-  context.fillText(input.arabicReference, 1440, 960);
+  context.fillText(input.arabicReference, 1584, 960);
 
   const jpg = await canvasBlob(canvas, 'image/jpeg', 0.95);
   download(jpg, input.filename.endsWith('.jpg') ? input.filename : `${input.filename}.jpg`);
