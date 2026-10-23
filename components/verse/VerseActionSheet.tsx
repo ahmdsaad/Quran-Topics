@@ -101,13 +101,15 @@ export default function VerseActionSheet({
     setExportingImage(true);
     try {
       const copied = await exportVerseImage({
-        arabic: verse.text,
-        translation: verse.translations?.[translationLanguage] ?? '',
+        verses: [{
+          arabic: verse.text,
+          translation: verse.translations?.[translationLanguage] ?? '',
+          page: verse.page,
+          verseKey: verse.key,
+        }],
         arabicReference: `${surah?.nameArabic ?? ''} · ${verse.ayah}`,
         translationReference: `${surah?.nameSimple ?? ''} · ${verse.ayah}`,
         filename: `Quran-${verse.key.replace(':', '-')}.jpg`,
-        page: verse.page,
-        verseKey: verse.key,
       });
       showToast(copied ? 'Image copied and JPG downloaded' : 'JPG downloaded');
       closeVerse();

@@ -4,14 +4,23 @@ import { fetchPage } from '@/lib/db/bootstrap';
 import { fontFamily, glyphOf, loadPageFont } from '@/lib/mushaf/fonts';
 import type { PageDoc } from '@/lib/types';
 
-type VerseImageInput = {
+type VerseImageVerse = {
   arabic: string;
   translation: string;
+  page: number;
+  verseKey: string;
+};
+
+type VerseImageInput = {
+  verses: VerseImageVerse[];
   arabicReference: string;
   translationReference: string;
   filename: string;
-  page: number;
-  verseKey: string;
+};
+
+type TextRun = {
+  text: string;
+  family: string;
 };
 
 type TextBox = {
@@ -54,13 +63,19 @@ function wrappedLines(context: CanvasRenderingContext2D, text: string, width: nu
   return lines;
 }
 
-function drawFittedText(context: CanvasRenderingContext2D, text: string, box: TextBox) {
+function drawFittedRuns(context: CanvasRenderingContext2D, runs: TextRun[], box: TextBox) {
   let size = box.maxSize;
-  let lines: string[] = [];
+  let laidOut: Array<{ family: string; lines: string[] }> = [];
+  let contentHeight = 0;
   while (size >= box.minSize) {
-    context.font = `${box.weight} ${size}px ${box.family}`;
-    lines = wrappedLines(context, text, box.width);
-    if (lines.length * size * box.lineHeight <= box.height) break;
+    laidOut = runs.map((run) => {
+      context.font = `${box.weight} ${size}px ${run.family}`;
+      return { family: run.family, lines: wrappedLines(context, run.text, box.width) };
+    });
+    const lineCount = laidOut.reduce((total, run) => total + run.lines.length, 0);
+    const gaps = Math.max(0, laidOut.length - 1) * size * 0.55;
+    contentHeight = lineCount * size * box.lineHeight + gaps;
+    if (contentHeight <= box.height) break;
     size -= 2;
   }
 
@@ -69,10 +84,16 @@ function drawFittedText(context: CanvasRenderingContext2D, text: string, box: Te
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   context.fillStyle = box.color;
-  context.font = `${box.weight} ${size}px ${box.family}`;
   const step = size * box.lineHeight;
-  const firstY = box.y + box.height / 2 - ((lines.length - 1) * step) / 2;
-  lines.forEach((line, index) => context.fillText(line, box.x + box.width / 2, firstY + index * step));
+  let y = box.y + (box.height - contentHeight) / 2 + step / 2;
+  laidOut.forEach((run, runIndex) => {
+    context.font = `${box.weight} ${size}px ${run.family}`;
+    run.lines.forEach((line) => {
+      context.fillText(line, box.x + box.width / 2, y);
+      y += step;
+    });
+    if (runIndex < laidOut.length - 1) y += size * 0.55;
+  });
   context.restore();
 }
 
@@ -87,20 +108,32 @@ function download(blob: Blob, filename: string) {
 
 /** Creates a presentation-ready 16:9 verse card and returns whether it was copied. */
 export async function exportVerseImage(input: VerseImageInput): Promise<boolean> {
-  const [pageDoc] = await Promise.all([
-    fetchPage<PageDoc>(input.page),
-    loadPageFont(input.page),
-  ]);
-  const mushafFamily = fontFamily(input.page);
-  const mushafGlyphs = pageDoc.lines
-    .flatMap((line) => line.t === 'ayah' ? line.w : [])
-    .filter((word) => word.k === input.verseKey)
-    .map(glyphOf)
-    .join(' ');
+  if (!input.verses.length) throw new Error('No verses selected');
+  const pages = [...new Set(input.verses.map((verse) => verse.page))];
+  const pageDocs = new Map<number, PageDoc>();
+  await Promise.all(pages.map(async (page) => {
+    const [doc] = await Promise.all([fetchPage<PageDoc>(page), loadPageFont(page)]);
+    pageDocs.set(page, doc);
+  }));
+  const arabicRuns = input.verses.map((verse) => {
+    const family = fontFamily(verse.page);
+    const glyphs = pageDocs.get(verse.page)?.lines
+      .flatMap((line) => line.t === 'ayah' ? line.w : [])
+      .filter((word) => word.k === verse.verseKey)
+      .map(glyphOf)
+      .join(' ') ?? '';
+    return {
+      text: glyphs || verse.arabic,
+      family: glyphs ? `"${family}"` : '"Scheherazade New", "Traditional Arabic", serif',
+    };
+  });
+  const translationRuns = input.verses.map((verse) => ({
+    text: verse.translation,
+    family: 'Arial, sans-serif',
+  }));
 
   await Promise.all([
-    document.fonts?.load(`400 72px "${mushafFamily}"`, mushafGlyphs),
-    document.fonts?.load(`400 72px "Scheherazade New"`, input.arabic),
+    ...arabicRuns.map((run) => document.fonts?.load(`400 72px ${run.family}`, run.text)),
     document.fonts?.ready,
   ].filter(Boolean));
 
@@ -119,7 +152,7 @@ export async function exportVerseImage(input: VerseImageInput): Promise<boolean>
   // right-hand 35%.
   context.fillRect(1247, 110, 2, 860);
 
-  drawFittedText(context, input.translation, {
+  drawFittedRuns(context, translationRuns, {
     x: 90,
     y: 130,
     width: 1068,
@@ -132,19 +165,17 @@ export async function exportVerseImage(input: VerseImageInput): Promise<boolean>
     direction: 'ltr',
     color: '#3f392f',
   });
-  drawFittedText(context, mushafGlyphs || input.arabic, {
+  drawFittedRuns(context, arabicRuns, {
     x: 1318,
     y: 115,
     width: 512,
     height: 760,
-    family: mushafGlyphs
-      ? `"${mushafFamily}"`
-      : '"Scheherazade New", "Traditional Arabic", serif',
+    family: arabicRuns[0].family,
     weight: '400',
     // Keep the authentic Mushaf weight while rendering the Arabic ayah at 50%
     // of the previous export size.
     maxSize: 63,
-    minSize: 21,
+    minSize: 11,
     lineHeight: 1.55,
     direction: 'rtl',
     color: '#1f1b16',

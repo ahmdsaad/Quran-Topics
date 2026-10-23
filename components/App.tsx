@@ -794,7 +794,7 @@ export default function App() {
       <VerseActionSheet meta={meta} translationLanguage={translationLanguage} />
       <NoteEditorModal meta={meta} />
       <AssignSheet meta={meta} />
-      <SelectionBar meta={meta} />
+      <SelectionBar meta={meta} translationLanguage={translationLanguage} />
       <Toast />
     </DragLayer>
   );

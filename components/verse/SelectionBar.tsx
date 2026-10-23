@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { Meta, Verse } from '@/lib/types';
+import type { Meta, TranslationLanguage, Verse } from '@/lib/types';
 import { BOOKMARK_COLORS } from '@/lib/types';
 import { addBookmarks, versesBetween } from '@/lib/db/repo';
 import { useUI } from '@/lib/store';
 import { normalizeRange, rangeLabel } from '@/lib/mushaf/verseRange';
+import { exportVerseImage } from '@/lib/export/verseImage';
 
 /**
  * The bar that appears once a range is being selected.
@@ -15,9 +16,16 @@ import { normalizeRange, rangeLabel } from '@/lib/mushaf/verseRange';
  * Between those, the bar is the only thing telling them the app is waiting — so
  * it says so, and offers the way out.
  */
-export default function SelectionBar({ meta }: { meta: Meta }) {
+export default function SelectionBar({
+  meta,
+  translationLanguage,
+}: {
+  meta: Meta;
+  translationLanguage: TranslationLanguage;
+}) {
   const { selectionAnchor, selectionFocus, clearSelection, openAssign, showToast } = useUI();
   const [verses, setVerses] = useState<Verse[]>([]);
+  const [exportingImage, setExportingImage] = useState(false);
 
   const complete = !!selectionAnchor && !!selectionFocus;
   const [from, to] = complete ? normalizeRange(selectionAnchor, selectionFocus) : ['', ''];
@@ -52,6 +60,37 @@ export default function SelectionBar({ meta }: { meta: Meta }) {
       showToast(`Copied ${verses.length} verses`);
     } catch {
       showToast('Copy is blocked in this browser');
+    }
+  };
+
+  const createImage = async () => {
+    if (!verses.length || exportingImage) return;
+    setExportingImage(true);
+    const first = verses[0];
+    const last = verses[verses.length - 1];
+    const firstSurah = meta.surahs.find((surah) => surah.number === first.surah);
+    const lastSurah = meta.surahs.find((surah) => surah.number === last.surah);
+    try {
+      const copied = await exportVerseImage({
+        verses: verses.map((verse) => ({
+          arabic: verse.text,
+          translation: verse.translations?.[translationLanguage] ?? '',
+          page: verse.page,
+          verseKey: verse.key,
+        })),
+        arabicReference: first.surah === last.surah
+          ? `${firstSurah?.nameArabic ?? ''} · ${rangeLabel(from, to)}`
+          : `${firstSurah?.nameArabic ?? ''} ${from} – ${lastSurah?.nameArabic ?? ''} ${to}`,
+        translationReference: `${surahOf(first)} · ${rangeLabel(from, to)}`,
+        filename: `Quran-${from.replace(':', '-')}-${to.replace(':', '-')}.jpg`,
+      });
+      showToast(copied ? 'Range image copied and JPG downloaded' : 'Range JPG downloaded');
+      clearSelection();
+    } catch (error) {
+      console.error('[range image]', error);
+      showToast('Could not create the range image');
+    } finally {
+      setExportingImage(false);
     }
   };
 
@@ -105,6 +144,15 @@ export default function SelectionBar({ meta }: { meta: Meta }) {
           </button>
           <button className="btn btn-ghost px-2 py-1 text-xs" disabled={!verses.length} onClick={copy}>
             ⧉
+          </button>
+          <button
+            className="btn btn-ghost px-2 py-1 text-xs"
+            disabled={!verses.length || exportingImage}
+            onClick={() => { void createImage(); }}
+            aria-label="Create image from selected verses"
+            title="Create image"
+          >
+            {exportingImage ? '…' : '▣'}
           </button>
           <button className="btn btn-ghost px-2 py-1 text-xs" onClick={clearSelection}>
             ✕
