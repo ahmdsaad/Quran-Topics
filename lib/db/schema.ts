@@ -70,4 +70,4 @@ export function db(): QuranDB {
   return _db;
 }
 
-export const CORPUS_VERSION = 6;
+export const CORPUS_VERSION = 7;

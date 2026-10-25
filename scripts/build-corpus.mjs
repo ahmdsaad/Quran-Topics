@@ -52,6 +52,8 @@ const fail = (msg) => {
 
 const TRANSLATIONS = [
   ['en', 'en-clear'],
+  ['en-sarwar', 'en-sarwar'],
+  ['en-wahiduddin', 'en-wahiduddin'],
   ['ru', 'ru'],
   ['it', 'it'],
   ['fr', 'fr'],
@@ -66,7 +68,10 @@ for (const [language, cacheKey] of TRANSLATIONS) {
   const translations = new Map();
   for (const surah of translationPayload.data?.surahs ?? []) {
     for (const ayah of surah.ayahs ?? []) {
-      translations.set(`${surah.number}:${ayah.numberInSurah}`, ayah.text);
+      translations.set(
+        `${surah.number}:${ayah.numberInSurah}`,
+        String(ayah.text).replace(/^\uFEFF/, '').trim()
+      );
     }
   }
   if (translations.size !== TOTAL_VERSES) {

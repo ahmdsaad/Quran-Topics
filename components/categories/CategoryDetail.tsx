@@ -602,7 +602,9 @@ function VerseRow({
 
 function translationLabel(language: TranslationLanguage): string {
   return {
-    en: 'English',
+    en: 'English — Talal Itani',
+    'en-sarwar': 'English — Muhammad Sarwar',
+    'en-wahiduddin': 'English — Wahiduddin Khan',
     ru: 'Russian',
     it: 'Italian',
     fr: 'French',

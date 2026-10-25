@@ -57,6 +57,8 @@ export async function ensureCorpus(onProgress?: (pct: number, label: string) => 
     stamp?.value === CORPUS_VERSION &&
     count === 6236 &&
     typeof sample?.translations?.en === 'string' &&
+    typeof sample?.translations?.['en-sarwar'] === 'string' &&
+    typeof sample?.translations?.['en-wahiduddin'] === 'string' &&
     typeof sample?.translations?.ru === 'string' &&
     typeof sample?.translations?.it === 'string' &&
     typeof sample?.translations?.fr === 'string' &&
