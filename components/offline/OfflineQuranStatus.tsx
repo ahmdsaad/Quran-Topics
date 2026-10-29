@@ -50,7 +50,6 @@ export default function OfflineQuranStatus() {
         disabled={status.state === 'downloading'}
         onClick={() => {
           requestOfflineQuranDownload();
-          window.dispatchEvent(new Event('quran-request-offline-download'));
         }}
       >
         {complete ? 'Downloaded' : status.state === 'error' ? 'Resume download' : status.state === 'downloading' ? 'Downloading…' : 'Download complete Quran'}
