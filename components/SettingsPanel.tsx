@@ -6,6 +6,7 @@ import { exportAll, importAll, outboxSize, rebuildMarkers, saveSettings } from '
 import { useUI } from '@/lib/store';
 import type { TranslationLanguage } from '@/lib/types';
 import TranslationLanguageSelect from '@/components/categories/TranslationLanguageSelect';
+import OfflineQuranStatus from '@/components/offline/OfflineQuranStatus';
 
 const THEMES = [
   { id: 'light', label: 'Light' },
@@ -85,6 +86,8 @@ export default function SettingsPanel({
     <div className="flex h-full flex-col">
       <PanelHeader title="Settings" onClose={onClose} />
       <div className="scroll-y flex-1 space-y-6 p-4">
+        <OfflineQuranStatus />
+
         <section>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-soft)' }}>
             Verse translation

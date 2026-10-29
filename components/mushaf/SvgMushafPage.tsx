@@ -89,14 +89,17 @@ export default function SvgMushafPage({
       // never mix two Mushaf editions in the same reading stream.
       for (let attempt = 0; attempt < 5 && live; attempt += 1) {
         try {
-          let response = await fetch(localSource, {
-            cache: attempt === 0 ? 'default' : 'reload',
-            signal: controller.signal,
-          });
+          let response: Response | null = null;
+          try {
+            response = await fetch(localSource, {
+              cache: attempt === 0 ? 'default' : 'reload',
+              signal: controller.signal,
+            });
+          } catch {}
           // The SVG collection is intentionally not committed because it is
           // hundreds of megabytes. A clean cloud build therefore falls back
           // to the corresponding semantic page published by QUL.
-          if (!response.ok) {
+          if (!response?.ok) {
             response = await fetch(fallbackSource, {
               cache: attempt === 0 ? 'default' : 'reload',
               signal: controller.signal,
