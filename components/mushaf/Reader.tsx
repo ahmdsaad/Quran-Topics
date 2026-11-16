@@ -123,6 +123,10 @@ export default function Reader({
   const virtualizer = useVirtualizer({
     count: meta.pages,
     getScrollElement: () => parentRef.current,
+    // Every item is an aspect-ratio page plus a fixed gap. Do not attach
+    // measureElement to rows: async SVG mounting can report transient sizes,
+    // and TanStack preserves the visible item by changing scrollTop. During
+    // auto-scroll that correction looks like a random jump to a page boundary.
     estimateSize: () => estimate,
     overscan: 1,
   });
@@ -344,7 +348,6 @@ export default function Reader({
           <div
             key={item.key}
             data-index={item.index}
-            ref={virtualizer.measureElement}
             style={{
               position: 'absolute',
               top: 0,
