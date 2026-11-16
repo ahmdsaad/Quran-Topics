@@ -81,10 +81,6 @@ body {
 
 .mushaf-reader {
   background: #fffdf8;
-  /* Page height is deterministic and managed by the virtualizer. Native scroll
-     anchoring can otherwise react when an off-screen SVG is mounted/unmounted
-     and snap the next page separator to the viewport top during auto-scroll. */
-  overflow-anchor: none;
 }
 
 /* A quiet page edge shared by every reader workspace (Read, Topics, Q/A,
