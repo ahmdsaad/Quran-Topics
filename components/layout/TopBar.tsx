@@ -70,6 +70,33 @@ export default function TopBar({
     return juz;
   }, [meta, currentPage]);
 
+  const juzProgress = useMemo(() => {
+    const compareVerseKeys = (left: string, right: string) => {
+      const [leftSurah, leftAyah] = left.split(':').map(Number);
+      const [rightSurah, rightAyah] = right.split(':').map(Number);
+      return leftSurah - rightSurah || leftAyah - rightAyah;
+    };
+    const pageForVerse = (verseKey: string) => {
+      for (let page = 1; page <= meta.pages; page += 1) {
+        const range = meta.pageIndex[String(page)];
+        if (range && compareVerseKeys(verseKey, range.to) <= 0) return page;
+      }
+      return meta.pages;
+    };
+
+    const startPage = pageForVerse(meta.juzStarts[juzOfPage - 1]);
+    const nextStartPage = juzOfPage < meta.juzStarts.length
+      ? pageForVerse(meta.juzStarts[juzOfPage])
+      : meta.pages + 1;
+    const endPage = Math.max(startPage, nextStartPage - 1);
+    const pageSpan = endPage - startPage;
+    const progress = pageSpan === 0
+      ? 100
+      : ((Math.min(endPage, Math.max(startPage, currentPage)) - startPage) / pageSpan) * 100;
+
+    return Math.min(100, Math.max(0, progress));
+  }, [currentPage, juzOfPage, meta]);
+
   return (
     <>
       <header
@@ -169,6 +196,21 @@ export default function TopBar({
           <span className="text-base leading-none">☰</span>
         </button>
       </header>
+
+      <div
+        className="relative h-[2px] shrink-0 overflow-hidden"
+        style={{ background: 'var(--border)' }}
+        role="progressbar"
+        aria-label={`Juz ${juzOfPage} reading progress`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(juzProgress)}
+      >
+        <div
+          className="absolute inset-y-0 right-0 transition-[width] duration-300 ease-out"
+          style={{ width: `${juzProgress}%`, background: 'var(--accent)' }}
+        />
+      </div>
 
       {navOpen ? (
         <NavigatorModal
