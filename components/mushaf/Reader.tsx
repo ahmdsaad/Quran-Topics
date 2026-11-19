@@ -127,6 +127,23 @@ export default function Reader({
     overscan: 1,
   });
 
+  // Keep measuring the real rendered row height: compact portrait, landscape,
+  // and scaled pages do not always equal the estimate, and replacing that
+  // measurement with a fixed height can crop the page. TanStack normally
+  // compensates a newly measured off-screen row by writing a correction to
+  // scrollTop. During continuous auto-scroll that correction is mistaken for
+  // a manual scroll and adopted as the new position, producing a sudden snap
+  // to a page boundary. Suppress only that compensation while auto-scroll is
+  // running; measurements and total layout height continue to update.
+  useLayoutEffect(() => {
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = autoScroll
+      ? () => false
+      : undefined;
+    return () => {
+      virtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined;
+    };
+  }, [autoScroll, virtualizer]);
+
   // Jump to a page only for the initial restore or a *new* jump token. The
   // target passed in `initialPage` can contain the last navigator/cloud jump
   // long after the reader has been scrolled elsewhere. Re-consuming that stale
@@ -334,6 +351,7 @@ export default function Reader({
     <div
       ref={parentRef}
       className="mushaf-reader scroll-y h-full w-full"
+      data-auto-scroll={autoScroll ? 'true' : 'false'}
       onScroll={handleScroll}
       onPointerDown={markUserNavigation}
       onTouchStart={markUserNavigation}

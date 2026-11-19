@@ -83,6 +83,13 @@ body {
   background: #fffdf8;
 }
 
+/* The virtualizer owns scroll anchoring while page rows mount. Native browser
+   anchoring is useful during normal reading, but during automatic movement it
+   can independently snap a newly mounted page to the top of the viewport. */
+.mushaf-reader[data-auto-scroll='true'] {
+  overflow-anchor: none;
+}
+
 /* A quiet page edge shared by every reader workspace (Read, Topics, Q/A,
    Search, and Marks). The existing gap keeps the rule from touching the next
    page while avoiding the boxed-card appearance the reader intentionally lacks. */
