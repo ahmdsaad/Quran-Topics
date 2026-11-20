@@ -81,12 +81,8 @@ body {
 
 .mushaf-reader {
   background: #fffdf8;
-}
-
-/* The virtualizer owns scroll anchoring while page rows mount. Native browser
-   anchoring is useful during normal reading, but during automatic movement it
-   can independently snap a newly mounted page to the top of the viewport. */
-.mushaf-reader[data-auto-scroll='true'] {
+  /* Page rows are measured by the virtualizer. Browser anchoring must not
+     independently turn those measurements into reading-position changes. */
   overflow-anchor: none;
 }
 

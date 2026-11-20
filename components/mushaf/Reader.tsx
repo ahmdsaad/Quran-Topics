@@ -131,18 +131,17 @@ export default function Reader({
   // and scaled pages do not always equal the estimate, and replacing that
   // measurement with a fixed height can crop the page. TanStack normally
   // compensates a newly measured off-screen row by writing a correction to
-  // scrollTop. During continuous auto-scroll that correction is mistaken for
-  // a manual scroll and adopted as the new position, producing a sudden snap
-  // to a page boundary. Suppress only that compensation while auto-scroll is
-  // running; measurements and total layout height continue to update.
+  // scrollTop. That write can snap a page boundary to the top during either
+  // manual or automatic scrolling. The Quran pages have stable aspect ratios,
+  // rotation and explicit jumps already restore their page deliberately, so
+  // no measurement is allowed to navigate the reader. Measurements and the
+  // total layout height still update, keeping every page fully visible.
   useLayoutEffect(() => {
-    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = autoScroll
-      ? () => false
-      : undefined;
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false;
     return () => {
       virtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined;
     };
-  }, [autoScroll, virtualizer]);
+  }, [virtualizer]);
 
   // Jump to a page only for the initial restore or a *new* jump token. The
   // target passed in `initialPage` can contain the last navigator/cloud jump
@@ -351,7 +350,6 @@ export default function Reader({
     <div
       ref={parentRef}
       className="mushaf-reader scroll-y h-full w-full"
-      data-auto-scroll={autoScroll ? 'true' : 'false'}
       onScroll={handleScroll}
       onPointerDown={markUserNavigation}
       onTouchStart={markUserNavigation}
