@@ -50,7 +50,12 @@ export default function SyncManager() {
       if (disposed || activeUserId !== user.id) return;
       // Realtime is normally instant. A short visible-app poll is the fallback
       // for mobile WebViews that suspend or silently drop websocket channels.
-      const timer = window.setInterval(() => { void restoreLatestPage(); }, 5_000);
+      // Background refreshes must never navigate the visible reader: a delayed
+      // write (including this device's own realtime echo) can otherwise snap a
+      // page to the top minutes after the user started reading. Cloud state is
+      // still mirrored continuously; it is applied to the reader only when the
+      // app is explicitly resumed through focus/visibility below.
+      const timer = window.setInterval(() => { void run(); }, 5_000);
       window.addEventListener('online', run);
       window.addEventListener('focus', restoreLatestPage);
       const onReadingStateSaved = () => { void run(); };
@@ -79,7 +84,7 @@ export default function SyncManager() {
             table: 'user_records',
             filter: `user_id=eq.${user.id}`,
           },
-          () => { void restoreLatestPage(); },
+          () => { void run(); },
         )
         .subscribe();
       stopActive = () => {
