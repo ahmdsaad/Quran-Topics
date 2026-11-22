@@ -250,8 +250,9 @@ export default function Reader({
     const el = parentRef.current;
     if (!el) return;
 
-    // Deliberately gentle reading speeds, expressed in CSS pixels per second.
-    const speeds = [2.5, 9, 14, 20, 27.5];
+    // Five fine-grained reading speeds, expressed in CSS pixels per second.
+    // The previous level 3 (14px/s) is intentionally the new maximum.
+    const speeds = [2.5, 5.5, 8.5, 11.5, 14];
     const pixelsPerSecond = speeds[Math.min(5, Math.max(1, autoScrollSpeed)) - 1];
     let frame = 0;
     let previous = performance.now();
