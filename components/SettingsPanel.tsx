@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { db } from '@/lib/db/schema';
 import { exportAll, importAll, outboxSize, rebuildMarkers, saveSettings } from '@/lib/db/repo';
 import { useUI } from '@/lib/store';
-import type { TranslationLanguage } from '@/lib/types';
+import type { TafsirEditionId, TranslationLanguage } from '@/lib/types';
+import { TAFSIR_EDITIONS } from '@/lib/tafsir';
 import TranslationLanguageSelect from '@/components/categories/TranslationLanguageSelect';
 import OfflineQuranStatus from '@/components/offline/OfflineQuranStatus';
 
@@ -19,6 +20,8 @@ export default function SettingsPanel({
   onScale,
   translationLanguage,
   onTranslationLanguage,
+  tafsirEdition,
+  onTafsirEdition,
   categoryArabicFontSize,
   onCategoryArabicFontSize,
   categoryTranslationFontSize,
@@ -33,6 +36,8 @@ export default function SettingsPanel({
   onScale: (v: number) => void;
   translationLanguage: TranslationLanguage;
   onTranslationLanguage: (language: TranslationLanguage) => void;
+  tafsirEdition: TafsirEditionId;
+  onTafsirEdition: (edition: TafsirEditionId) => void;
   categoryArabicFontSize: number;
   onCategoryArabicFontSize: (size: number) => void;
   categoryTranslationFontSize: number;
@@ -106,6 +111,28 @@ export default function SettingsPanel({
             Three readable English choices are available for comparison: Talal Itani,
             Muhammad Sarwar, and Wahiduddin Khan. A translation conveys an
             interpreter&apos;s understanding of the Arabic meaning.
+          </p>
+          <div className="mt-4 flex items-start justify-between gap-4">
+            <label htmlFor="tafsir-edition" className="pt-2 text-sm">Arabic explanation</label>
+            <select
+              id="tafsir-edition"
+              dir="rtl"
+              className="input max-w-[70%] text-right text-sm"
+              value={tafsirEdition}
+              onChange={(event) => {
+                const edition = event.target.value as TafsirEditionId;
+                onTafsirEdition(edition);
+                void saveSettings({ tafsirEdition: edition });
+              }}
+            >
+              {TAFSIR_EDITIONS.map((edition) => (
+                <option key={edition.id} value={edition.id}>{edition.label}</option>
+              ))}
+            </select>
+          </div>
+          <p className="mt-2 text-[11px] leading-relaxed" style={{ color: 'var(--ink-soft)' }}>
+            Shown below the selected verse translation. “معاني الكلمات” gives the
+            shortest word-by-word help; the other choices provide fuller Arabic explanation.
           </p>
         </section>
 

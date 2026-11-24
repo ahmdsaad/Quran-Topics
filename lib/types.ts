@@ -65,6 +65,11 @@ export type TranslationLanguage =
   | 'it'
   | 'fr'
   | 'es';
+export type TafsirEditionId =
+  | 'arabic-words'
+  | 'muyassar'
+  | 'mukhtasar'
+  | 'saadi';
 export type CategorySpace = 'topics' | 'qa';
 
 // ------------------------------------------------------------- user data types
@@ -156,6 +161,7 @@ export interface Settings {
   pageScale: number;
   layoutMode: 'auto' | 'single' | 'dual';
   translationLanguage: TranslationLanguage;
+  tafsirEdition: TafsirEditionId;
   categoryArabicFontSize: number;
   categoryTranslationFontSize: number;
   categoryTitleFontSize: number;

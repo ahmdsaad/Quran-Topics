@@ -3,7 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useDraggable } from '@dnd-kit/core';
-import type { Bookmark, Category, Meta, TranslationLanguage, Verse } from '@/lib/types';
+import type {
+  Bookmark,
+  Category,
+  Meta,
+  TafsirEditionId,
+  TranslationLanguage,
+  Verse,
+} from '@/lib/types';
 import { BOOKMARK_COLORS } from '@/lib/types';
 import {
   addBookmark,
@@ -16,13 +23,16 @@ import {
 } from '@/lib/db/repo';
 import { useUI } from '@/lib/store';
 import { exportVerseImage } from '@/lib/export/verseImage';
+import { tafsirEdition as getTafsirEdition } from '@/lib/tafsir';
 
 export default function VerseActionSheet({
   meta,
   translationLanguage,
+  tafsirEdition,
 }: {
   meta: Meta;
   translationLanguage: TranslationLanguage;
+  tafsirEdition: TafsirEditionId;
 }) {
   const {
     activeVerse,
@@ -39,6 +49,11 @@ export default function VerseActionSheet({
   const [verse, setVerse] = useState<Verse | null>(null);
   const [copyOptionsOpen, setCopyOptionsOpen] = useState(false);
   const [exportingImage, setExportingImage] = useState(false);
+  const [tafsir, setTafsir] = useState<{ text: string; loading: boolean; error: boolean }>({
+    text: '',
+    loading: false,
+    error: false,
+  });
 
   useEffect(() => {
     if (!activeVerse) {
@@ -52,6 +67,32 @@ export default function VerseActionSheet({
       live = false;
     };
   }, [activeVerse]);
+
+  useEffect(() => {
+    if (!verse) {
+      setTafsir({ text: '', loading: false, error: false });
+      return;
+    }
+    const controller = new AbortController();
+    setTafsir({ text: '', loading: true, error: false });
+    const query = new URLSearchParams({
+      edition: tafsirEdition,
+      surah: String(verse.surah),
+      ayah: String(verse.ayah),
+    });
+    fetch(`/api/tafsir?${query}`, { signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json() as { text?: string; error?: string };
+        if (!response.ok) throw new Error(body.error || `Tafsir ${response.status}`);
+        setTafsir({ text: body.text ?? '', loading: false, error: false });
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        console.error('[tafsir]', error);
+        setTafsir({ text: '', loading: false, error: true });
+      });
+    return () => controller.abort();
+  }, [tafsirEdition, verse]);
 
   const bookmarks = useLiveQuery(
     () => (activeVerse ? bookmarksForVerse(activeVerse) : Promise.resolve([] as Bookmark[])),
@@ -125,7 +166,7 @@ export default function VerseActionSheet({
     <>
       <div className="fixed inset-0 z-[60]" onClick={closeVerse} />
       <div
-        className="panel fixed z-[61] max-h-[80dvh] w-[min(26rem,calc(100vw-1.5rem))] overflow-y-auto overscroll-contain lg:max-h-[90dvh]"
+        className="verse-action-sheet panel fixed z-[61] max-h-[80dvh] overflow-y-auto overscroll-contain lg:max-h-[90dvh]"
         style={anchorStyle(actionAnchor)}
         role="dialog"
         aria-label={`Actions for verse ${verse.key}`}
@@ -172,6 +213,22 @@ export default function VerseActionSheet({
           >
             {verse.translations?.[translationLanguage]}
           </p>
+          <div className="mt-3 border-t pt-2.5" style={{ borderColor: 'var(--border)' }}>
+            <p dir="rtl" className="mb-1 text-right text-xs font-semibold" style={{ color: 'var(--accent)' }}>
+              {getTafsirEdition(tafsirEdition).label}
+            </p>
+            <p
+              dir="rtl"
+              className="whitespace-pre-line text-right text-[15px] leading-relaxed"
+              style={{ color: 'var(--ink)' }}
+            >
+              {tafsir.loading
+                ? 'جارٍ تحميل المعنى…'
+                : tafsir.error
+                  ? 'تعذر تحميل المعنى الآن.'
+                  : tafsir.text || 'لا يوجد شرح مختصر لهذه الآية.'}
+            </p>
+          </div>
         </div>
 
         {assigned.length ? (
@@ -318,7 +375,8 @@ function anchorStyle(anchor: { x: number; y: number } | null): React.CSSProperti
   if (typeof window === 'undefined' || !anchor) {
     return { left: '50%', top: '50%', transform: 'translate(-50%,-50%)' };
   }
-  const w = Math.min(416, window.innerWidth - 24);
+  const tabletPortrait = window.matchMedia('(pointer: coarse) and (min-width: 600px) and (max-width: 1023px)').matches;
+  const w = tabletPortrait ? window.innerWidth - 24 : Math.min(416, window.innerWidth - 24);
   const left = Math.min(Math.max(12, anchor.x - w / 2), window.innerWidth - w - 12);
   return { left, top: '50%', transform: 'translateY(-50%)' };
 }

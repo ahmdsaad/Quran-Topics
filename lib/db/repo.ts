@@ -758,6 +758,7 @@ export async function saveSettings(patch: Partial<Settings>) {
     pageScale: 1,
     layoutMode: 'auto' as const,
     translationLanguage: 'en' as const,
+    tafsirEdition: 'arabic-words' as const,
     categoryArabicFontSize: 22.5,
     categoryTranslationFontSize: 24,
     categoryTitleFontSize: 14,

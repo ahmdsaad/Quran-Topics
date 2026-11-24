@@ -189,6 +189,16 @@ body {
   font-size: 12px;
 }
 
+.verse-action-sheet {
+  width: min(26rem, calc(100vw - 1.5rem));
+}
+
+@media (pointer: coarse) and (min-width: 600px) and (max-width: 1023px) {
+  .verse-action-sheet {
+    width: calc(100vw - 1.5rem);
+  }
+}
+
 @media (max-width: 1023px) {
   .verse-popup-translation {
     font-size: 18px;

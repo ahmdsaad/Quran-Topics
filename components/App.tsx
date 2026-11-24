@@ -21,7 +21,7 @@ import { syncNow } from '@/lib/supabase/sync';
 import { ensureCorpus, loadMeta } from '@/lib/db/bootstrap';
 import { allMarkers, getReadingState, getSettings, rebuildMarkers } from '@/lib/db/repo';
 import { db } from '@/lib/db/schema';
-import type { Meta, TranslationLanguage, VerseMarker } from '@/lib/types';
+import type { Meta, TafsirEditionId, TranslationLanguage, VerseMarker } from '@/lib/types';
 import { useUI } from '@/lib/store';
 import { normalizeRange } from '@/lib/mushaf/verseRange';
 
@@ -34,6 +34,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1);
   const [translationLanguage, setTranslationLanguage] = useState<TranslationLanguage>('en');
+  const [tafsirEdition, setTafsirEdition] = useState<TafsirEditionId>('arabic-words');
   const [categoryArabicFontSize, setCategoryArabicFontSize] = useState(22.5);
   const [categoryTranslationFontSize, setCategoryTranslationFontSize] = useState(24);
   const [categoryTitleFontSize, setCategoryTitleFontSize] = useState(14);
@@ -135,6 +136,7 @@ export default function App() {
             : st.translationLanguage;
           setTranslationLanguage(language as TranslationLanguage);
         }
+        if (st?.tafsirEdition) setTafsirEdition(st.tafsirEdition);
         if (st?.categoryArabicFontSize) setCategoryArabicFontSize(st.categoryArabicFontSize);
         if (st?.categoryTranslationFontSize) {
           setCategoryTranslationFontSize(st.categoryTranslationFontSize);
@@ -630,6 +632,8 @@ export default function App() {
           onScale={setScale}
           translationLanguage={translationLanguage}
           onTranslationLanguage={setTranslationLanguage}
+          tafsirEdition={tafsirEdition}
+          onTafsirEdition={setTafsirEdition}
           categoryArabicFontSize={categoryArabicFontSize}
           onCategoryArabicFontSize={setCategoryArabicFontSize}
           categoryTranslationFontSize={categoryTranslationFontSize}
@@ -707,6 +711,8 @@ export default function App() {
                     onScale={setScale}
                     translationLanguage={translationLanguage}
                     onTranslationLanguage={setTranslationLanguage}
+                    tafsirEdition={tafsirEdition}
+                    onTafsirEdition={setTafsirEdition}
                     categoryArabicFontSize={categoryArabicFontSize}
                     onCategoryArabicFontSize={setCategoryArabicFontSize}
                     categoryTranslationFontSize={categoryTranslationFontSize}
@@ -791,7 +797,11 @@ export default function App() {
         {!dual && <MobileTabs />}
       </div>
 
-      <VerseActionSheet meta={meta} translationLanguage={translationLanguage} />
+      <VerseActionSheet
+        meta={meta}
+        translationLanguage={translationLanguage}
+        tafsirEdition={tafsirEdition}
+      />
       <NoteEditorModal meta={meta} />
       <AssignSheet meta={meta} />
       <SelectionBar meta={meta} translationLanguage={translationLanguage} />
