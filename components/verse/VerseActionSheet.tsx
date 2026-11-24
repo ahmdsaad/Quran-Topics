@@ -206,14 +206,7 @@ export default function VerseActionSheet({
           >
             {verse.text}
           </p>
-          <p
-            dir="ltr"
-            className="verse-popup-translation mt-2 border-t pt-2 text-left leading-normal"
-            style={{ borderColor: 'var(--border)', color: 'var(--ink-soft)' }}
-          >
-            {verse.translations?.[translationLanguage]}
-          </p>
-          <div className="mt-3 border-t pt-2.5" style={{ borderColor: 'var(--border)' }}>
+          <div className="mt-2 border-t pt-2.5" style={{ borderColor: 'var(--border)' }}>
             <p dir="rtl" className="mb-1 text-right text-xs font-semibold" style={{ color: 'var(--accent)' }}>
               {getTafsirEdition(tafsirEdition).label}
             </p>
@@ -229,6 +222,13 @@ export default function VerseActionSheet({
                   : tafsir.text || 'لا يوجد شرح مختصر لهذه الآية.'}
             </p>
           </div>
+          <p
+            dir="ltr"
+            className="verse-popup-translation mt-3 border-t pt-2 text-left leading-normal"
+            style={{ borderColor: 'var(--border)', color: 'var(--ink-soft)' }}
+          >
+            {verse.translations?.[translationLanguage]}
+          </p>
         </div>
 
         {assigned.length ? (
