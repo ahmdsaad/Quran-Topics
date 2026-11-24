@@ -376,7 +376,19 @@ function anchorStyle(anchor: { x: number; y: number } | null): React.CSSProperti
     return { left: '50%', top: '50%', transform: 'translate(-50%,-50%)' };
   }
   const tabletPortrait = window.matchMedia('(pointer: coarse) and (min-width: 600px) and (max-width: 1023px)').matches;
-  const w = tabletPortrait ? window.innerWidth - 24 : Math.min(416, window.innerWidth - 24);
+  const clickedPage = Array.from(document.querySelectorAll<HTMLElement>('.mushaf-page-frame'))
+    .map((element) => element.getBoundingClientRect())
+    .find((rect) => (
+      rect.width > 0
+      && anchor.x >= rect.left
+      && anchor.x <= rect.right
+      && anchor.y >= rect.top
+      && anchor.y <= rect.bottom
+    ));
+  const desktopPageWidth = window.innerWidth >= 1024 ? clickedPage?.width : undefined;
+  const w = tabletPortrait
+    ? window.innerWidth - 24
+    : Math.min(desktopPageWidth ?? 416, window.innerWidth - 24);
   const left = Math.min(Math.max(12, anchor.x - w / 2), window.innerWidth - w - 12);
-  return { left, top: '50%', transform: 'translateY(-50%)' };
+  return { left, top: '50%', width: w, transform: 'translateY(-50%)' };
 }
